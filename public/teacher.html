@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drawing Tool - Teacher View</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Teacher's View</h1>
+        <div class="session-info">
+            <div id="qrcode"></div>
+            <div class="instructions">
+                <p>Scan this QR code to join the drawing session</p>
+                <p>Session Code: <span id="sessionCode" class="highlight"></span></p>
+                <div class="url-container">
+                    <p>Or share this URL:</p>
+                    <div class="copy-url">
+                        <input type="text" id="sessionUrl" readonly>
+                        <button id="copyBtn">Copy</button>
+                    </div>
+                </div>
+                <p id="connection-status">Waiting for students to connect...</p>
+                <button id="forceSyncBtn" class="sync-btn" style="display: none;">Force Sync All</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="student-grid" id="studentGrid">
+        <!-- Student canvases will be added here dynamically -->
+    </div>
+
+    <script>
+        // Socket setup
+        const socket = io();
+        const studentGrid = document.getElementById('studentGrid');
+        const connectionStatus = document.getElementById('connection-status');
+        const students = new Map(); // Store student data
+        let sessionCode = '';
+        
+        // Socket event handlers
+        socket.on('connect', () => {
+            console.log('Teacher connected to server');
+            
+            // Generate random session code
+            sessionCode = generateSessionCode();
+            document.getElementById('sessionCode').textContent = sessionCode;
+            
+            // Register as teacher
+            socket.emit('teacherJoin', sessionCode);
+            
+            // Generate QR code with session code embedded
+            const baseUrl = window.location.origin;
+            const sessionUrl = `${baseUrl}/?code=${sessionCode}`;
+            document.getElementById('sessionUrl').value = sessionUrl;
+            
+            // Generate QR code using more compatible library
+            const qrcodeElement = document.getElementById('qrcode');
+            qrcodeElement.innerHTML = ''; // Clear previous QR code
+            
+            // Create QR code using the simpler library
+            new QRCode(qrcodeElement, {
+                text: sessionUrl,
+                width: 200,
+                height: 200,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        });
+        
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+            connectionStatus.textContent = 'Connection error. Please refresh the page.';
+            connectionStatus.classList.add('error');
+        });
+        
+        // Student management
+        socket.on('studentJoined', ({ username }) => {
+            console.log('Student joined:', username);
+            
+            if (!students.has(username)) {
+                // Create canvas for this student
+                const studentCanvas = createStudentCanvas(username);
+                students.set(username, studentCanvas);
+                connectionStatus.textContent = `${students.size} student(s) connected`;
+            }
+        });
+        
+        socket.on('studentLeft', ({ username }) => {
+            console.log('Student left:', username);
+            
+            if (students.has(username)) {
+                // Remove student's canvas
+                const studentCanvas = students.get(username);
+                studentCanvas.container.remove();
+                students.delete(username);
+                
+                connectionStatus.textContent = students.size > 0 
+                    ? `${students.size} student(s) connected`
+                    : 'Waiting for students to connect...';
+            }
+        });
+        
+        // Drawing handlers
+        socket.on('drawBatch', ({ username, batch }) => {
+            if (!students.has(username)) {
+                console.warn('Received drawing from unknown student:', username);
+                return;
+            }
+            
+            const { ctx } = students.get(username);
+            
+            batch.forEach(data => {
+                if (data.type === 'line') {
+                    ctx.beginPath();
+                    ctx.moveTo(data.startX, data.startY);
+                    ctx.lineTo(data.endX, data.endY);
+                    ctx.strokeStyle = data.color;
+                    ctx.lineWidth = data.width;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.stroke();
+                } else if (data.type === 'dot') {
+                    ctx.beginPath();
+                    ctx.arc(data.x, data.y, data.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = data.color;
+                    ctx.fill();
+                }
+            });
+            
+            // Update last activity timestamp
+            updateStudentActivity(username);
+        });
+        
+        socket.on('undo', ({ username, canvasState }) => {
+            console.log(`Received undo from ${username}`);
+            if (!students.has(username)) return;
+            
+            if (canvasState && canvasState.paths !== undefined) {
+                // If we have the full canvas state, redraw it completely
+                updateStudentCanvas(username, canvasState);
+            } else {
+                // Fallback to clearing and resetting
+                const { ctx, canvas } = students.get(username);
+                resetCanvas(ctx, canvas);
+            }
+            
+            // Update activity timestamp
+            updateStudentActivity(username);
+        });
+        
+        socket.on('erase', ({ username, canvasState }) => {
+            console.log(`Received erase from ${username}`);
+            if (!students.has(username)) return;
+            
+            if (canvasState && canvasState.paths !== undefined) {
+                // Update canvas with latest state after erase
+                updateStudentCanvas(username, canvasState);
+                updateStudentActivity(username);
+            }
+        });
+        
+        socket.on('clear', ({ username, canvasState }) => {
+            if (!students.has(username)) return;
+            
+            const { ctx, canvas } = students.get(username);
+            resetCanvas(ctx, canvas);
+            updateStudentActivity(username);
+        });
+        
+        socket.on('redo', ({ username, canvasState }) => {
+            console.log(`Received redo from ${username}`);
+            if (!students.has(username)) return;
+            
+            if (canvasState && canvasState.paths !== undefined) {
+                // If we have the full canvas state, redraw it completely
+                updateStudentCanvas(username, canvasState);
+            } else {
+                // Fallback to clearing and resetting
+                const { ctx, canvas } = students.get(username);
+                resetCanvas(ctx, canvas);
+            }
+            
+            // Update activity timestamp
+            updateStudentActivity(username);
+        });
+        
+        // Helper functions
+        function generateSessionCode() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        
+        function createStudentCanvas(username) {
+            // Create container
+            const container = document.createElement('div');
+            container.className = 'student-canvas-container';
+            container.setAttribute('data-username', username);
+            container.setAttribute('data-last-update', Date.now().toString());
+            
+            // Create header with student name
+            const header = document.createElement('div');
+            header.className = 'student-header';
+            
+            const nameDisplay = document.createElement('span');
+            nameDisplay.className = 'student-name';
+            nameDisplay.textContent = username;
+            nameDisplay.style.fontWeight = 'bold';
+            nameDisplay.style.fontSize = '16px';
+            nameDisplay.style.marginRight = '10px';
+            
+            const syncStatus = document.createElement('div');
+            syncStatus.className = 'sync-status';
+            
+            const statusDot = document.createElement('div');
+            statusDot.className = 'status-dot';
+            statusDot.style.backgroundColor = '#00FF00'; // Start green (in sync)
+            
+            syncStatus.appendChild(statusDot);
+            header.appendChild(nameDisplay);
+            header.appendChild(syncStatus);
+            
+            // Add the header to the container
+            container.appendChild(header);
+            
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = 400;  // Half size of student canvas
+            canvas.height = 300;
+            container.appendChild(canvas);
+            
+            // Add to grid
+            studentGrid.appendChild(container);
+            
+            // Set up canvas context
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Apply scaling (student canvas is 800x600, teacher's view is 400x300)
+            const scaleRatio = canvas.width / 800;
+            ctx.scale(scaleRatio, scaleRatio);
+            
+            // Initialize activity tracking
+            const lastActivity = Date.now();
+            
+            return { 
+                container, 
+                canvas, 
+                ctx, 
+                statusIndicator: syncStatus,
+                lastActivity 
+            };
+        }
+        
+        function resetCanvas(ctx, canvas) {
+            // Reset transformation
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            // Clear canvas
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Reapply scaling
+            const scaleRatio = canvas.width / 800;
+            ctx.scale(scaleRatio, scaleRatio);
+        }
+        
+        // Helper function to update student activity and sync status
+        function updateStudentActivity(username) {
+            if (students.has(username)) {
+                const student = students.get(username);
+                student.lastActivity = Date.now();
+                
+                // Update the data-last-update attribute on the container
+                const container = document.querySelector(`.student-canvas-container[data-username="${username}"]`);
+                if (container) {
+                    container.setAttribute('data-last-update', Date.now().toString());
+                }
+                
+                // Update sync status to in-sync (green)
+                updateSyncStatus(username, true);
+            }
+        }
+        
+        function updateSyncStatus(username, inSync) {
+            if (students.has(username)) {
+                const student = students.get(username);
+                const statusDot = student.statusIndicator.querySelector('.status-dot');
+                
+                if (statusDot) {
+                    statusDot.style.backgroundColor = inSync ? '#00FF00' : '#FF0000'; // Green or Red
+                }
+            }
+        }
+        
+        // Function to request student data with proper error handling
+        function requestStudentData(username) {
+            if (!sessionCode || !username) return;
+            
+            console.log(`Requesting canvas data for ${username}`);
+            
+            // Request the student's canvas data
+            socket.emit('requestStudentCanvas', {
+                sessionCode: sessionCode,
+                studentUsername: username
+            });
+        }
+        
+        // Handle receiving student canvas data
+        socket.on('studentCanvasData', function(data) {
+            const { username, canvasState } = data;
+            
+            console.log(`Received canvas data from ${username}`);
+            
+            // Find the student's canvas
+            if (!students.has(username)) return;
+            
+            const student = students.get(username);
+            const { ctx, canvas } = student;
+            
+            if (!ctx || !canvas || !canvasState) return;
+            
+            // Clear existing canvas
+            resetCanvas(ctx, canvas);
+            
+            // Redraw the paths from the canvas state
+            if (canvasState.paths && Array.isArray(canvasState.paths)) {
+                canvasState.paths.forEach(path => {
+                    if (path.points && path.points.length === 1) {
+                        // Single point (dot)
+                        const [x, y] = path.points[0];
+                        ctx.beginPath();
+                        ctx.arc(x, y, path.width/2, 0, Math.PI * 2);
+                        ctx.fillStyle = path.color;
+                        ctx.fill();
+                    } else if (path.points && path.points.length > 1) {
+                        // Draw connected lines
+                        ctx.beginPath();
+                        ctx.moveTo(path.points[0][0], path.points[0][1]);
+                        
+                        for (let i = 1; i < path.points.length; i++) {
+                            ctx.lineTo(path.points[i][0], path.points[i][1]);
+                        }
+                        
+                        ctx.strokeStyle = path.color;
+                        ctx.lineWidth = path.width;
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        ctx.stroke();
+                    }
+                });
+            }
+            
+            // Update sync status and timestamp
+            updateStudentActivity(username);
+            student.container.setAttribute('data-last-update', Date.now().toString());
+        });
+        
+        // Helper function to update student canvas with new paths
+        function updateStudentCanvas(username, canvasState) {
+            if (!students.has(username) || !canvasState || !canvasState.paths) return;
+            
+            const { ctx, canvas } = students.get(username);
+            
+            // Clear canvas
+            resetCanvas(ctx, canvas);
+            
+            // Redraw all paths
+            canvasState.paths.forEach(path => {
+                if (path.points && path.points.length === 1) {
+                    // Single point (dot)
+                    const [x, y] = path.points[0];
+                    ctx.beginPath();
+                    ctx.arc(x, y, path.width/2, 0, Math.PI * 2);
+                    ctx.fillStyle = path.color;
+                    ctx.fill();
+                } else if (path.points && path.points.length > 1) {
+                    // Draw connected lines
+                    ctx.beginPath();
+                    ctx.moveTo(path.points[0][0], path.points[0][1]);
+                    
+                    for (let i = 1; i < path.points.length; i++) {
+                        ctx.lineTo(path.points[i][0], path.points[i][1]);
+                    }
+                    
+                    ctx.strokeStyle = path.color;
+                    ctx.lineWidth = path.width;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.stroke();
+                }
+            });
+        }
+        
+        // Check sync status every 3 seconds and request updates only for the teacher's view
+        setInterval(function() {
+            if (!sessionCode) return; // Only run if in a session
+            
+            const studentsElements = document.querySelectorAll('.student-canvas-container');
+            
+            studentsElements.forEach(student => {
+                const username = student.getAttribute('data-username');
+                
+                // Request just this student's data for the teacher's view
+                requestStudentData(username);
+            });
+        }, 3000);
+        
+        // UI event handlers
+        document.getElementById('copyBtn').addEventListener('click', function() {
+            const urlInput = document.getElementById('sessionUrl');
+            
+            // Use modern clipboard API with fallback to older method
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(urlInput.value)
+                    .then(() => {
+                        // Visual feedback
+                        this.textContent = 'Copied!';
+                        setTimeout(() => {
+                            this.textContent = 'Copy';
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy: ', err);
+                        // Fallback to old method
+                        urlInput.select();
+                        document.execCommand('copy');
+                        
+                        // Visual feedback
+                        this.textContent = 'Copied!';
+                        setTimeout(() => {
+                            this.textContent = 'Copy';
+                        }, 2000);
+                    });
+            } else {
+                // Fallback for older browsers
+                urlInput.select();
+                document.execCommand('copy');
+                
+                // Visual feedback
+                this.textContent = 'Copied!';
+                setTimeout(() => {
+                    this.textContent = 'Copy';
+                }, 2000);
+            }
+        });
+        
+        // Force Sync All button click handler - remove as we don't want to force sync
+        document.getElementById('forceSyncBtn').style.display = 'none';
+    </script>
+</body>
+</html> 
