@@ -1,6 +1,13 @@
 # Live Drawing App
 
-A simple Node.js-based web app that enables real-time collaborative drawing and interaction between students and teachers.
+Real-time collaborative drawing and interaction between students and teachers, built on Node.js  <br>
+
+<img width="1470" alt="image" src="https://github.com/user-attachments/assets/04fcf624-a78e-4078-8dde-c3d2f035c39c" />
+
+Try it out at<br>
+https://live-drawing-app.onrender.com/teacher.html
+
+
 
 ## 🎯 Features
 
