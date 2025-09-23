@@ -7,6 +7,14 @@ const sessionCodeEl = document.getElementById('sessionCode');
 const sessionUrlInput = document.getElementById('sessionUrl');
 const copyBtn = document.getElementById('copyBtn');
 
+let supabase;
+let channel;
+let channelReady = false;
+let sessionCode = '';
+let syncInterval = null;
+const presenceKey = `teacher-${Math.random().toString(36).slice(2, 10)}`;
+const students = new Map();
+
 const supabaseUrl = window.SUPABASE_URL;
 const supabaseAnonKey = window.SUPABASE_ANON_KEY;
 
@@ -18,14 +26,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
         setStatusBadge('Something went wrong', 'error');
     });
 }
-
-let supabase;
-let channel;
-let channelReady = false;
-let sessionCode = '';
-let syncInterval = null;
-const presenceKey = `teacher-${Math.random().toString(36).slice(2, 10)}`;
-const students = new Map();
 
 async function initialiseTeacherConsole() {
     setStatusBadge('Connecting to Supabase...', 'pending');
