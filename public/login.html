@@ -3,60 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Drawing Tool - Login</title>
+    <title>Live Drawing Tool - Join Session</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
-<body>
-    <div class="login-container">
-        <h1>Live Drawing Tool</h1>
-        <p>Enter your details to join a drawing session</p>
-        
-        <form class="login-form" id="loginForm">
-            <div class="form-group">
-                <label for="username">Your Name</label>
-                <input type="text" id="username" placeholder="Enter your name" required>
+<body class="page page--auth">
+    <main class="auth-layout">
+        <section class="auth-card">
+            <div class="auth-card__header">
+                <h1>Join a Live Drawing Session</h1>
+                <p class="auth-card__lede">
+                    Enter your details to jump into a collaborative whiteboard with your class.
+                </p>
             </div>
-            <div class="form-group">
-                <label for="sessionCode">Session Code</label>
-                <input type="text" id="sessionCode" placeholder="Enter session code" required>
+
+            <form class="auth-form" id="loginForm">
+                <label class="input-field">
+                    <span class="input-label">Your name</span>
+                    <input type="text" id="username" placeholder="e.g. Jordan" autocomplete="name" required>
+                </label>
+                <label class="input-field">
+                    <span class="input-label">Session code</span>
+                    <input type="text" id="sessionCode" placeholder="ABC123" autocomplete="one-time-code" required>
+                </label>
+                <button type="submit" class="primary-btn">Join session</button>
+            </form>
+
+            <div class="auth-meta">
+                <p>
+                    You'll get your own canvas and everything you draw updates instantly for the teacher.
+                    Your work stays with your session code so make sure it matches exactly.
+                </p>
             </div>
-            <button type="submit" class="login-btn">Join Session</button>
-        </form>
-    </div>
+        </section>
+
+        <aside class="auth-aside">
+            <div class="auth-aside__card">
+                <h2>Running a class?</h2>
+                <p>Create a session code, monitor every student canvas and stay perfectly in sync.</p>
+                <button id="openConsole" class="secondary-btn" type="button">Launch teacher console</button>
+            </div>
+
+            <div class="auth-aside__tips">
+                <h3>Quick tips</h3>
+                <ul>
+                    <li>Scan the QR code in the teacher console to skip typing the code.</li>
+                    <li>Supabase powers the realtime collaboration—ensure your credentials are configured.</li>
+                    <li>Works beautifully on tablets with touch gestures.</li>
+                </ul>
+            </div>
+        </aside>
+    </main>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const loginForm = document.getElementById('loginForm');
             const usernameInput = document.getElementById('username');
             const sessionCodeInput = document.getElementById('sessionCode');
-            
-            // Check for session code in URL (from QR code)
+            const openConsoleButton = document.getElementById('openConsole');
+
             const urlParams = new URLSearchParams(window.location.search);
             const codeFromUrl = urlParams.get('code');
-            
+
             if (codeFromUrl) {
                 sessionCodeInput.value = codeFromUrl;
             }
-            
-            loginForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                
+
+            loginForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+
                 const username = usernameInput.value.trim();
-                const quizCode = sessionCodeInput.value.trim().toUpperCase();
-                
-                if (!username || !quizCode) {
-                    alert('Please enter your name and session code');
+                const code = sessionCodeInput.value.trim().toUpperCase();
+
+                if (!username || !code) {
+                    alert('Please provide both your name and the session code.');
                     return;
                 }
-                
-                // Store in session storage
+
                 sessionStorage.setItem('username', username);
-                sessionStorage.setItem('sessionCode', quizCode);
-                
-                // Redirect to student page
+                sessionStorage.setItem('sessionCode', code);
+
                 window.location.href = '/student';
+            });
+
+            openConsoleButton.addEventListener('click', () => {
+                window.location.href = '/console';
             });
         });
     </script>
 </body>
-</html> 
+</html>
