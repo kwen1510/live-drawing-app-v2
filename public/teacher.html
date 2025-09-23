@@ -39,6 +39,36 @@
                     <p class="status-text" id="connection-status">Connecting to Supabase...</p>
                 </div>
             </div>
+
+            <div class="session-card session-card--tools">
+                <div class="session-tools__header">
+                    <h2>Classroom controls</h2>
+                    <p class="panel-subtitle">Share a reference image with your class and reset canvases when it's time for the next prompt.</p>
+                </div>
+
+                <div class="session-tools__upload">
+                    <label for="referenceImage" class="secondary-btn session-tools__upload-btn">Choose image</label>
+                    <input type="file" id="referenceImage" accept="image/*" hidden>
+                    <button id="clearImageBtn" class="ghost-btn" type="button" hidden>Clear selection</button>
+                </div>
+                <p class="session-tools__filename" id="referenceFileName">No image selected</p>
+
+                <div class="session-tools__preview" id="referencePreview" hidden>
+                    <img id="referencePreviewImage" alt="Selected reference preview">
+                </div>
+
+                <div class="session-tools__actions">
+                    <button id="pushImageBtn" class="primary-btn" type="button" disabled>Push to students</button>
+                </div>
+                <p class="session-tools__status" id="referenceStatus">Choose an image to send to your class.</p>
+
+                <div class="session-tools__divider"></div>
+                <div class="session-tools__flow">
+                    <h3>Ready for the next question?</h3>
+                    <p class="panel-subtitle">Clear every student's canvas and remove any shared background image.</p>
+                    <button id="nextQuestionBtn" class="ghost-btn ghost-btn--danger session-tools__next" type="button">Next question</button>
+                </div>
+            </div>
         </section>
 
         <section class="students-panel">

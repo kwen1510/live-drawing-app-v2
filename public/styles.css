@@ -338,6 +338,83 @@ input[type="range"]::-moz-range-thumb {
     box-shadow: 0 28px 60px rgba(15, 23, 42, 0.12);
 }
 
+.session-card--tools {
+    align-items: flex-start;
+    gap: 1.8rem;
+}
+
+.session-tools__header {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.session-tools__upload {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.session-tools__upload-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.session-tools__upload button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.session-tools__filename {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.session-tools__preview {
+    width: min(100%, 320px);
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: rgba(15, 23, 42, 0.04);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.session-tools__preview img {
+    width: 100%;
+    display: block;
+}
+
+.session-tools__actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.session-tools__status {
+    font-size: 0.92rem;
+    color: var(--text-muted);
+}
+
+.session-tools__divider {
+    width: 100%;
+    height: 1px;
+    background: var(--border);
+    margin: 0.25rem 0 0.75rem;
+}
+
+.session-tools__flow {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.session-tools__next {
+    justify-self: flex-start;
+}
+
 .session-card__details {
     display: grid;
     gap: 1rem;
