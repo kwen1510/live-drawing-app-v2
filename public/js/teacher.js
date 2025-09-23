@@ -6,12 +6,25 @@ const studentGrid = document.getElementById('studentGrid');
 const sessionCodeEl = document.getElementById('sessionCode');
 const sessionUrlInput = document.getElementById('sessionUrl');
 const copyBtn = document.getElementById('copyBtn');
+const referenceInput = document.getElementById('referenceImage');
+const clearImageBtn = document.getElementById('clearImageBtn');
+const pushImageBtn = document.getElementById('pushImageBtn');
+const referencePreview = document.getElementById('referencePreview');
+const referencePreviewImage = document.getElementById('referencePreviewImage');
+const referenceStatus = document.getElementById('referenceStatus');
+const referenceFileName = document.getElementById('referenceFileName');
+const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+const BASE_CANVAS_WIDTH = 800;
+const BASE_CANVAS_HEIGHT = 600;
 
 let supabase;
 let channel;
 let channelReady = false;
 let sessionCode = '';
 let syncInterval = null;
+let selectedImageData = null;
+let selectedImageName = '';
+let activeBackgroundImage = null;
 const presenceKey = `teacher-${Math.random().toString(36).slice(2, 10)}`;
 const students = new Map();
 
@@ -76,6 +89,7 @@ async function initialiseTeacherConsole() {
     });
 
     setupCopyButton();
+    setupClassroomControls();
     window.addEventListener('beforeunload', handleWindowUnload);
 }
 
@@ -89,6 +103,7 @@ function wireChannelEvents() {
             updateConnectionStatus();
             if (isNew) {
                 requestStudentData(payload.username);
+                sendBackgroundToStudent(payload.username);
             }
         }
     });
@@ -212,7 +227,10 @@ function ensureStudentCard(username) {
         ctx,
         statusDot,
         updatedAt,
-        lastActivity: Date.now()
+        lastActivity: Date.now(),
+        backgroundImageData: null,
+        backgroundImageElement: null,
+        paths: []
     };
 
     students.set(username, student);
@@ -221,36 +239,44 @@ function ensureStudentCard(username) {
 
 function updateStudentCanvas(username, canvasState) {
     const student = students.get(username);
-    if (!student || !canvasState?.paths) return;
+    if (!student || !canvasState) return;
 
-    const { ctx, canvas } = student;
-    resetCanvas(ctx, canvas);
+    student.paths = Array.isArray(canvasState.paths) ? canvasState.paths : [];
 
-    canvasState.paths.forEach((path) => {
-        if (!Array.isArray(path.points) || path.points.length === 0) {
+    const backgroundData = typeof canvasState.backgroundImage === 'string' && canvasState.backgroundImage.length > 0
+        ? canvasState.backgroundImage
+        : null;
+
+    if (backgroundData !== student.backgroundImageData) {
+        student.backgroundImageData = backgroundData;
+
+        if (!backgroundData) {
+            student.backgroundImageElement = null;
+            drawStudentCanvas(student);
+            setStudentSyncState(username, true);
             return;
         }
 
-        if (path.points.length === 1) {
-            const [x, y] = path.points[0];
-            ctx.beginPath();
-            ctx.arc(x, y, path.width / 2, 0, Math.PI * 2);
-            ctx.fillStyle = path.color;
-            ctx.fill();
-        } else {
-            ctx.beginPath();
-            ctx.moveTo(path.points[0][0], path.points[0][1]);
-            for (let i = 1; i < path.points.length; i += 1) {
-                ctx.lineTo(path.points[i][0], path.points[i][1]);
+        loadImage(backgroundData).then((image) => {
+            if (student.backgroundImageData !== backgroundData) {
+                return;
             }
-            ctx.strokeStyle = path.color;
-            ctx.lineWidth = path.width;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.stroke();
-        }
-    });
 
+            student.backgroundImageElement = image;
+            drawStudentCanvas(student);
+            setStudentSyncState(username, true);
+        }).catch(() => {
+            if (student.backgroundImageData === backgroundData) {
+                student.backgroundImageElement = null;
+                drawStudentCanvas(student);
+                setStudentSyncState(username, true);
+            }
+        });
+        setStudentSyncState(username, true);
+        return;
+    }
+
+    drawStudentCanvas(student);
     setStudentSyncState(username, true);
 }
 
@@ -258,7 +284,7 @@ function resetCanvas(ctx, canvas) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const scaleRatio = canvas.width / 800;
+    const scaleRatio = canvas.width / BASE_CANVAS_WIDTH;
     ctx.scale(scaleRatio, scaleRatio);
 }
 
@@ -339,6 +365,278 @@ function setupCopyButton() {
         } else {
             fallbackCopy(text);
         }
+    });
+}
+
+function setupClassroomControls() {
+    if (!referenceInput || !pushImageBtn || !referenceStatus) {
+        return;
+    }
+
+    referenceInput.addEventListener('change', handleReferenceSelection);
+
+    if (pushImageBtn) {
+        pushImageBtn.addEventListener('click', handlePushImageToStudents);
+    }
+
+    if (clearImageBtn) {
+        clearImageBtn.addEventListener('click', () => {
+            clearReferenceImage(true);
+        });
+    }
+
+    if (nextQuestionBtn) {
+        nextQuestionBtn.addEventListener('click', handleNextQuestion);
+    }
+
+    updateReferenceStatus('Choose an image to send to your class.');
+}
+
+function handleReferenceSelection(event) {
+    const files = event?.target?.files;
+    if (!files || files.length === 0) {
+        return;
+    }
+
+    const [file] = files;
+    if (!file || !file.type.startsWith('image/')) {
+        updateReferenceStatus('Please choose a supported image file.');
+        if (referenceInput) {
+            referenceInput.value = '';
+        }
+        return;
+    }
+
+    selectedImageName = file.name || '';
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        if (typeof reader.result !== 'string') {
+            updateReferenceStatus('We could not read that file. Please try another image.');
+            return;
+        }
+
+        selectedImageData = reader.result;
+        updateReferencePreview(selectedImageData);
+
+        if (referenceFileName) {
+            referenceFileName.textContent = selectedImageName
+                ? `Selected: ${selectedImageName}`
+                : 'Image ready to send';
+        }
+
+        if (pushImageBtn) {
+            pushImageBtn.disabled = false;
+        }
+
+        if (clearImageBtn) {
+            clearImageBtn.hidden = false;
+        }
+
+        updateReferenceStatus(`Ready to send "${selectedImageName}" to your students.`);
+    };
+    reader.onerror = () => {
+        updateReferenceStatus('We could not read that file. Please try another image.');
+    };
+    reader.readAsDataURL(file);
+}
+
+function handlePushImageToStudents() {
+    if (!selectedImageData) {
+        updateReferenceStatus('Choose an image before pushing it to students.');
+        return;
+    }
+
+    if (!channelReady) {
+        updateReferenceStatus('Realtime connection not ready yet. Please try again momentarily.');
+        return;
+    }
+
+    safeSend('set_background', { imageData: selectedImageData });
+    activeBackgroundImage = selectedImageData;
+    updateReferenceStatus('Image sent to your students.');
+    showPushFeedback('Sent!');
+}
+
+function clearReferenceImage(resetActive = false) {
+    selectedImageData = null;
+    selectedImageName = '';
+
+    if (resetActive) {
+        activeBackgroundImage = null;
+    }
+
+    if (referenceInput) {
+        referenceInput.value = '';
+    }
+
+    updateReferencePreview(null);
+
+    if (referenceFileName) {
+        referenceFileName.textContent = 'No image selected';
+    }
+
+    if (pushImageBtn) {
+        pushImageBtn.disabled = true;
+        pushImageBtn.textContent = 'Push to students';
+    }
+
+    if (clearImageBtn) {
+        clearImageBtn.hidden = true;
+    }
+
+    updateReferenceStatus('Choose an image to send to your class.');
+}
+
+function updateReferencePreview(imageData) {
+    if (!referencePreview || !referencePreviewImage) {
+        return;
+    }
+
+    if (!imageData) {
+        referencePreviewImage.removeAttribute('src');
+        referencePreview.hidden = true;
+        return;
+    }
+
+    referencePreview.hidden = false;
+    referencePreviewImage.src = imageData;
+}
+
+function updateReferenceStatus(message) {
+    if (!referenceStatus) return;
+    referenceStatus.textContent = message;
+}
+
+function showPushFeedback(message) {
+    if (!pushImageBtn) return;
+    const originalText = pushImageBtn.textContent;
+    pushImageBtn.textContent = message;
+    pushImageBtn.disabled = true;
+    setTimeout(() => {
+        pushImageBtn.textContent = originalText;
+        if (selectedImageData) {
+            pushImageBtn.disabled = false;
+        }
+    }, 1600);
+}
+
+function sendBackgroundToStudent(username) {
+    if (!activeBackgroundImage || !username) {
+        return;
+    }
+
+    safeSend('set_background', {
+        imageData: activeBackgroundImage,
+        target: username
+    });
+}
+
+function handleNextQuestion() {
+    if (typeof window !== 'undefined') {
+        const confirmReset = window.confirm('Clear every student canvas and move to the next question?');
+        if (!confirmReset) {
+            return;
+        }
+    }
+
+    activeBackgroundImage = null;
+    safeSend('next_question', { initiatedAt: Date.now() });
+    clearAllStudentCanvases();
+    updateReferenceStatus('Student canvases cleared. Share a new image when you\'re ready.');
+}
+
+function clearAllStudentCanvases() {
+    students.forEach((student, username) => {
+        student.backgroundImageData = null;
+        student.backgroundImageElement = null;
+        student.paths = [];
+        resetCanvas(student.ctx, student.canvas);
+        student.updatedAt.textContent = 'Awaiting activity';
+        setStudentSyncState(username, true);
+    });
+}
+
+function drawStudentCanvas(student) {
+    const { ctx, canvas, backgroundImageElement, paths } = student;
+    resetCanvas(ctx, canvas);
+
+    if (backgroundImageElement) {
+        if (backgroundImageElement.complete) {
+            drawStudentBackground(ctx, backgroundImageElement);
+            renderStudentPaths(ctx, paths);
+        } else {
+            backgroundImageElement.onload = () => {
+                drawStudentBackground(ctx, backgroundImageElement);
+                renderStudentPaths(ctx, paths);
+                backgroundImageElement.onload = null;
+            };
+            backgroundImageElement.onerror = () => {
+                renderStudentPaths(ctx, paths);
+                backgroundImageElement.onload = null;
+                backgroundImageElement.onerror = null;
+            };
+        }
+        return;
+    }
+
+    renderStudentPaths(ctx, paths);
+}
+
+function renderStudentPaths(ctx, paths) {
+    paths.forEach((path) => {
+        if (!Array.isArray(path.points) || path.points.length === 0) {
+            return;
+        }
+
+        if (path.points.length === 1) {
+            const [x, y] = path.points[0];
+            ctx.beginPath();
+            ctx.arc(x, y, path.width / 2, 0, Math.PI * 2);
+            ctx.fillStyle = path.color;
+            ctx.fill();
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(path.points[0][0], path.points[0][1]);
+            for (let i = 1; i < path.points.length; i += 1) {
+                ctx.lineTo(path.points[i][0], path.points[i][1]);
+            }
+            ctx.strokeStyle = path.color;
+            ctx.lineWidth = path.width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+        }
+    });
+}
+
+function drawStudentBackground(ctx, image) {
+    const canvasRatio = BASE_CANVAS_WIDTH / BASE_CANVAS_HEIGHT;
+    const imageRatio = image.width / image.height;
+
+    let drawWidth = BASE_CANVAS_WIDTH;
+    let drawHeight = BASE_CANVAS_HEIGHT;
+
+    if (imageRatio > canvasRatio) {
+        drawWidth = BASE_CANVAS_WIDTH;
+        drawHeight = BASE_CANVAS_WIDTH / imageRatio;
+    } else {
+        drawHeight = BASE_CANVAS_HEIGHT;
+        drawWidth = BASE_CANVAS_HEIGHT * imageRatio;
+    }
+
+    const offsetX = (BASE_CANVAS_WIDTH - drawWidth) / 2;
+    const offsetY = (BASE_CANVAS_HEIGHT - drawHeight) / 2;
+
+    ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+}
+
+function loadImage(dataUrl) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = dataUrl;
     });
 }
 
