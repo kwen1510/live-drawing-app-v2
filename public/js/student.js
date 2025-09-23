@@ -10,6 +10,8 @@ if (!username || !sessionCode) {
 const welcomeHeading = document.getElementById('welcomeHeading');
 const sessionBadge = document.getElementById('sessionStatus');
 const sessionCodeDisplay = document.getElementById('sessionCodeDisplay');
+const canvasPanel = document.getElementById('canvasPanel');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
 
 if (welcomeHeading) {
     welcomeHeading.textContent = `Hi, ${username}!`;
@@ -35,6 +37,8 @@ let currentPath = null;
 let paths = [];
 let history = [];
 let currentStep = -1;
+let backgroundImageData = null;
+let backgroundImageElement = null;
 
 const supabaseUrl = window.SUPABASE_URL;
 const supabaseAnonKey = window.SUPABASE_ANON_KEY;
@@ -60,7 +64,8 @@ function initialiseHistory() {
     currentStep += 1;
     history.push({
         imageData: canvas.toDataURL(),
-        paths: []
+        paths: [],
+        backgroundImage: backgroundImageData
     });
     updateButtons();
 }
@@ -135,6 +140,24 @@ function wireChannelEvents() {
         broadcastCanvas('sync');
     });
 
+    channel.on('broadcast', { event: 'set_background' }, ({ payload }) => {
+        const { imageData, target } = payload || {};
+        if (target && target !== username) {
+            return;
+        }
+
+        if (typeof imageData !== 'string' || imageData.length === 0) {
+            removeBackgroundImage();
+            return;
+        }
+
+        applyBackgroundImage(imageData);
+    });
+
+    channel.on('broadcast', { event: 'next_question' }, () => {
+        handleNextQuestionFromTeacher();
+    });
+
     channel.on('broadcast', { event: 'session_closed' }, ({ payload }) => {
         if (payload?.reason === 'teacher_left') {
             alert('The teacher has ended the session. You will return to the home page.');
@@ -188,8 +211,7 @@ function setupControls() {
 
     document.getElementById('clearBtn').addEventListener('click', () => {
         paths = [];
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        redrawCanvas();
         pushHistory();
         broadcastCanvas('clear');
     });
@@ -207,6 +229,98 @@ function setupControls() {
         restoreFromHistory(history[currentStep]);
         broadcastCanvas('redo');
     });
+
+    setupFullscreenControls();
+}
+
+function setupFullscreenControls() {
+    if (!canvasPanel || !fullscreenBtn || !document.body) {
+        return;
+    }
+
+    const syncFullscreenUi = () => {
+        const fullscreenActive = isCanvasFullscreen();
+        fullscreenBtn.classList.toggle('is-active', fullscreenActive);
+        fullscreenBtn.setAttribute('aria-pressed', String(fullscreenActive));
+        fullscreenBtn.setAttribute('aria-label', fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen');
+        canvasPanel.classList.toggle('canvas-panel--fullscreen', fullscreenActive);
+        document.body.classList.toggle('is-canvas-fullscreen', fullscreenActive);
+    };
+
+    fullscreenBtn.addEventListener('click', () => {
+        if (isCanvasFullscreen()) {
+            exitFullscreen().catch((error) => {
+                console.error('Failed to exit fullscreen mode', error);
+            });
+        } else {
+            requestFullscreen(canvasPanel).catch((error) => {
+                console.error('Failed to enter fullscreen mode', error);
+            });
+        }
+    });
+
+    document.addEventListener('fullscreenchange', syncFullscreenUi);
+    document.addEventListener('webkitfullscreenchange', syncFullscreenUi);
+    document.addEventListener('mozfullscreenchange', syncFullscreenUi);
+    document.addEventListener('MSFullscreenChange', syncFullscreenUi);
+
+    syncFullscreenUi();
+}
+
+function isCanvasFullscreen() {
+    return getFullscreenElement() === canvasPanel;
+}
+
+function getFullscreenElement() {
+    return document.fullscreenElement
+        || document.webkitFullscreenElement
+        || document.mozFullScreenElement
+        || document.msFullscreenElement
+        || null;
+}
+
+function requestFullscreen(element) {
+    if (!element) {
+        return Promise.reject(new Error('No element available for fullscreen'));
+    }
+
+    if (element.requestFullscreen) {
+        return element.requestFullscreen();
+    }
+    if (element.webkitRequestFullscreen) {
+        element.webkitRequestFullscreen();
+        return Promise.resolve();
+    }
+    if (element.mozRequestFullScreen) {
+        element.mozRequestFullScreen();
+        return Promise.resolve();
+    }
+    if (element.msRequestFullscreen) {
+        element.msRequestFullscreen();
+        return Promise.resolve();
+    }
+
+    return Promise.reject(new Error('Fullscreen API not supported in this browser'));
+}
+
+function exitFullscreen() {
+    if (document.exitFullscreen) {
+        return document.exitFullscreen();
+    }
+    if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+        return Promise.resolve();
+    }
+    if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen();
+        return Promise.resolve();
+    }
+    if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+        return Promise.resolve();
+    }
+
+    return Promise.resolve();
 }
 
 function startDrawing(event) {
@@ -289,7 +403,8 @@ function pushHistory() {
 
     history.push({
         imageData: canvas.toDataURL(),
-        paths: clonePaths(paths)
+        paths: clonePaths(paths),
+        backgroundImage: backgroundImageData
     });
 
     updateButtons();
@@ -297,6 +412,14 @@ function pushHistory() {
 
 function restoreFromHistory(historyItem) {
     if (!historyItem) return;
+
+    backgroundImageData = historyItem.backgroundImage || null;
+    if (backgroundImageData) {
+        backgroundImageElement = new Image();
+        backgroundImageElement.src = backgroundImageData;
+    } else {
+        backgroundImageElement = null;
+    }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const img = new Image();
@@ -314,9 +437,33 @@ function updateButtons() {
 }
 
 function redrawCanvas() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    if (backgroundImageElement) {
+        if (backgroundImageElement.complete) {
+            drawBackgroundImage(backgroundImageElement);
+            renderAllPaths();
+        } else {
+            backgroundImageElement.onload = () => {
+                drawBackgroundImage(backgroundImageElement);
+                renderAllPaths();
+                backgroundImageElement.onload = null;
+            };
+            backgroundImageElement.onerror = () => {
+                renderAllPaths();
+                backgroundImageElement.onload = null;
+                backgroundImageElement.onerror = null;
+            };
+            return;
+        }
+    } else {
+        renderAllPaths();
+    }
+}
+
+function renderAllPaths() {
     paths.forEach((path) => {
         if (path.points.length === 1) {
             const [x, y] = path.points[0];
@@ -337,6 +484,96 @@ function redrawCanvas() {
             ctx.stroke();
         }
     });
+}
+
+function drawBackgroundImage(image) {
+    const canvasRatio = canvas.width / canvas.height;
+    const imageRatio = image.width / image.height;
+
+    let drawWidth = canvas.width;
+    let drawHeight = canvas.height;
+
+    if (imageRatio > canvasRatio) {
+        drawWidth = canvas.width;
+        drawHeight = canvas.width / imageRatio;
+    } else {
+        drawHeight = canvas.height;
+        drawWidth = canvas.height * imageRatio;
+    }
+
+    const offsetX = (canvas.width - drawWidth) / 2;
+    const offsetY = (canvas.height - drawHeight) / 2;
+
+    ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+}
+
+function applyBackgroundImage(imageData) {
+    if (typeof imageData !== 'string' || imageData.length === 0) {
+        return;
+    }
+
+    if (imageData === backgroundImageData && backgroundImageElement) {
+        broadcastCanvas('background');
+        setStatusBadge('Reference image refreshed by your teacher', 'success');
+        return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+        backgroundImageData = imageData;
+        backgroundImageElement = img;
+        redrawCanvas();
+        pushHistory();
+        broadcastCanvas('background');
+        setStatusBadge('Your teacher shared a new reference image', 'success');
+    };
+    img.onerror = () => {
+        console.error('Failed to load background image');
+    };
+    img.src = imageData;
+}
+
+function removeBackgroundImage({ broadcast = true, recordHistory = true, notify = true } = {}) {
+    const hadBackground = Boolean(backgroundImageData || backgroundImageElement);
+
+    if (!hadBackground) {
+        if (notify) {
+            setStatusBadge('Background cleared', 'pending');
+        }
+        if (broadcast) {
+            broadcastCanvas('background');
+        }
+        return;
+    }
+
+    backgroundImageData = null;
+    backgroundImageElement = null;
+    redrawCanvas();
+
+    if (recordHistory) {
+        pushHistory();
+    }
+
+    if (broadcast) {
+        broadcastCanvas('background');
+    }
+
+    if (notify) {
+        setStatusBadge('Reference image removed by your teacher', 'pending');
+    }
+}
+
+function handleNextQuestionFromTeacher() {
+    isDrawing = false;
+    currentPath = null;
+    paths = [];
+    history = [];
+    currentStep = -1;
+    removeBackgroundImage({ broadcast: false, recordHistory: false, notify: false });
+    redrawCanvas();
+    initialiseHistory();
+    broadcastCanvas('clear');
+    setStatusBadge('Teacher started the next question', 'pending');
 }
 
 function checkErase(x, y) {
@@ -443,7 +680,8 @@ function broadcastCanvas(reason = 'update') {
         username,
         reason,
         canvasState: {
-            paths: snapshot
+            paths: snapshot,
+            backgroundImage: backgroundImageData
         }
     };
 
