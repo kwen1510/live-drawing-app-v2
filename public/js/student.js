@@ -345,6 +345,19 @@ function checkErase(x, y) {
 
     for (let i = paths.length - 1; i >= 0; i -= 1) {
         const path = paths[i];
+        if (!path || !Array.isArray(path.points) || path.points.length === 0) {
+            continue;
+        }
+
+        if (path.points.length === 1) {
+            const [pointX, pointY] = path.points[0];
+            if (distToSegment(x, y, pointX, pointY, pointX, pointY) <= eraseRadius) {
+                paths.splice(i, 1);
+                erased = true;
+            }
+            continue;
+        }
+
         for (let j = 1; j < path.points.length; j += 1) {
             const [x1, y1] = path.points[j - 1];
             const [x2, y2] = path.points[j];
