@@ -480,6 +480,11 @@ input[type="range"]::-moz-range-thumb {
     gap: 2.5rem;
 }
 
+.session-panel {
+    display: grid;
+    gap: 2.5rem;
+}
+
 .session-card {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -704,13 +709,242 @@ input[type="range"]::-moz-range-thumb {
     padding: clamp(1.5rem, 3vw, 2rem);
     box-shadow: var(--shadow-card);
     display: grid;
+    gap: clamp(1rem, 2.5vw, 1.75rem);
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.canvas-panel::before {
+    content: '';
+    position: absolute;
+    inset: -55% -15% auto 35%;
+    width: 160%;
+    height: 140%;
+    background: radial-gradient(circle at center, rgba(99, 102, 241, 0.22), transparent 60%);
+    transform: rotate(12deg);
+    pointer-events: none;
+    opacity: 0.65;
+}
+
+.canvas-panel > * {
+    position: relative;
+    z-index: 1;
+}
+
+:root[data-theme="dark"] .canvas-panel::before {
+    background: radial-gradient(circle at center, rgba(129, 140, 248, 0.28), transparent 60%);
+    opacity: 0.75;
+}
+
+.canvas-panel__toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.canvas-panel__titles {
+    display: grid;
+    gap: 0.4rem;
+    max-width: min(100%, 420px);
+}
+
+.canvas-panel__title {
+    font-size: clamp(1.3rem, 3vw, 1.6rem);
+}
+
+.canvas-panel__subtitle {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+}
+
+.canvas-panel__action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 0.7rem 1.1rem;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--text-inverse);
+    box-shadow: var(--shadow-primary);
+    font-weight: 600;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.canvas-panel__action-btn:hover {
+    background: var(--primary-strong);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-primary-hover);
+}
+
+.canvas-panel__action-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-primary);
+}
+
+.canvas-panel__action-btn[aria-pressed="true"] {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+}
+
+.canvas-panel__action-icon {
+    width: 22px;
+    height: 22px;
+}
+
+.canvas-panel__action-label {
+    font-size: 0.95rem;
+}
+
+.canvas-wrapper {
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: 20px;
+    padding: clamp(1rem, 2vw, 1.4rem);
+    box-shadow: inset 0 0 0 1px var(--border-strong), var(--shadow-panel);
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: clamp(320px, 55vh, 520px);
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.canvas-wrapper:hover {
+    background: rgba(99, 102, 241, 0.12);
+    box-shadow: inset 0 0 0 1px var(--border-strong), var(--shadow-soft);
+}
+
+:root[data-theme="dark"] .canvas-wrapper {
+    background: rgba(129, 140, 248, 0.16);
+}
+
+:root[data-theme="dark"] .canvas-wrapper:hover {
+    background: rgba(129, 140, 248, 0.22);
 }
 
 .canvas-panel canvas {
     width: 100%;
+    height: auto;
+    max-height: 100%;
     border-radius: 18px;
     box-shadow: inset 0 0 0 1px var(--border-strong);
     background: #fff;
+}
+
+.canvas-panel:fullscreen,
+.canvas-panel--fullscreen {
+    border-radius: 0;
+    box-shadow: none;
+    padding: clamp(1.5rem, 4vw, 3rem);
+}
+
+.canvas-panel:fullscreen .canvas-wrapper,
+.canvas-panel--fullscreen .canvas-wrapper {
+    min-height: min(85vh, 100%);
+}
+
+.canvas-panel:fullscreen .canvas-panel__action-btn,
+.canvas-panel--fullscreen .canvas-panel__action-btn {
+    box-shadow: var(--shadow-primary-hover);
+}
+
+.canvas-panel:fullscreen .canvas-panel__action-btn:hover,
+.canvas-panel--fullscreen .canvas-panel__action-btn:hover {
+    transform: translateY(-1px);
+}
+
+.canvas-panel:fullscreen .canvas-panel__subtitle,
+.canvas-panel--fullscreen .canvas-panel__subtitle {
+    display: none;
+}
+
+.canvas-panel__color-rail {
+    position: absolute;
+    top: 50%;
+    right: clamp(1rem, 4vw, 2.4rem);
+    transform: translateY(-50%);
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    padding: 0.75rem 0.6rem;
+    display: none;
+    flex-direction: column;
+    gap: 0.75rem;
+    box-shadow: var(--shadow-panel);
+    z-index: 3;
+}
+
+.canvas-panel__color-rail .color-btn {
+    width: 44px;
+    height: 44px;
+    box-shadow: var(--shadow-color-btn);
+}
+
+.canvas-panel:fullscreen .canvas-panel__color-rail,
+.canvas-panel--fullscreen .canvas-panel__color-rail {
+    display: flex;
+}
+
+.canvas-panel:fullscreen .canvas-panel__toolbar,
+.canvas-panel--fullscreen .canvas-panel__toolbar {
+    position: absolute;
+    top: clamp(1rem, 4vw, 2.2rem);
+    right: clamp(1rem, 4vw, 2.2rem);
+    background: var(--surface-strong);
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    padding: 0.35rem;
+    box-shadow: var(--shadow-panel);
+    gap: 0;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.canvas-panel:fullscreen .canvas-panel__action-btn,
+.canvas-panel--fullscreen .canvas-panel__action-btn {
+    pointer-events: auto;
+}
+
+.canvas-panel:fullscreen .canvas-panel__titles,
+.canvas-panel--fullscreen .canvas-panel__titles {
+    display: none;
+}
+
+.canvas-panel:fullscreen .canvas-wrapper,
+.canvas-panel--fullscreen .canvas-wrapper {
+    padding: clamp(1rem, 3vw, 2rem);
+    min-height: 100%;
+    height: 100%;
+}
+
+.canvas-panel:fullscreen .canvas-wrapper canvas,
+.canvas-panel--fullscreen .canvas-wrapper canvas {
+    max-height: none;
+}
+
+@media (max-width: 780px) {
+    .canvas-panel:fullscreen .canvas-panel__color-rail,
+    .canvas-panel--fullscreen .canvas-panel__color-rail {
+        flex-direction: row;
+        top: auto;
+        bottom: clamp(1rem, 6vw, 2.5rem);
+        left: 50%;
+        right: auto;
+        transform: translate(-50%, 0);
+        padding: 0.6rem 0.9rem;
+    }
+}
+
+@media (max-width: 900px) {
+    .canvas-panel__toolbar {
+        align-items: stretch;
+    }
+
+    .canvas-panel__action-btn {
+        width: 100%;
+        justify-content: center;
+    }
 }
 
 .control-panel {
