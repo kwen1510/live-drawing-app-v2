@@ -21,13 +21,22 @@ if (sessionCodeDisplay) {
 const canvas = document.getElementById('drawingCanvas');
 const canvasPanel = document.getElementById('canvasPanel');
 const canvasWrapper = document.getElementById('canvasWrapper');
+const canvasTopbar = document.getElementById('canvasTopbar');
 const fullscreenToggle = document.getElementById('fullscreenToggle');
 const fullscreenEnterIcon = document.getElementById('fullscreenEnterIcon');
 const fullscreenExitIcon = document.getElementById('fullscreenExitIcon');
 const fullscreenToggleLabel = document.getElementById('fullscreenToggleLabel');
-const stylusModeToggle = document.getElementById('stylusModeToggle');
-const stylusModeStatus = document.getElementById('stylusModeStatus');
 const ctx = canvas.getContext('2d');
+const colorButtons = Array.from(document.querySelectorAll('.color-btn'));
+const toolButtons = Array.from(document.querySelectorAll('[data-tool]'));
+const brushSizeInputs = Array.from(document.querySelectorAll('[data-brush-size]'));
+const stylusToggleButtons = Array.from(document.querySelectorAll('[data-stylus-toggle]'));
+const stylusStatusLabels = Array.from(document.querySelectorAll('[data-stylus-status]'));
+const actionButtons = {
+    undo: Array.from(document.querySelectorAll('[data-action="undo"]')),
+    redo: Array.from(document.querySelectorAll('[data-action="redo"]')),
+    clear: Array.from(document.querySelectorAll('[data-action="clear"]'))
+};
 canvas.style.width = '100%';
 canvas.style.height = 'auto';
 canvas.width = 800;
@@ -47,7 +56,7 @@ let history = [];
 let currentStep = -1;
 let backgroundImageData = null;
 let backgroundImageElement = null;
-let stylusMode = false;
+let stylusMode = true;
 let activePointerId = null;
 
 const supabaseUrl = window.SUPABASE_URL;
@@ -186,6 +195,13 @@ function setupControls() {
     if (!canvas) return;
 
     canvas.style.touchAction = 'none';
+    if (canvasWrapper) {
+        canvasWrapper.style.touchAction = 'none';
+    }
+
+    if (canvasPanel) {
+        canvasPanel.style.touchAction = 'none';
+    }
 
     if (window.PointerEvent) {
         canvas.addEventListener('pointerdown', startDrawing, { passive: false });
@@ -205,62 +221,145 @@ function setupControls() {
         canvas.addEventListener('touchcancel', stopDrawing, { passive: false });
     }
 
-    document.querySelectorAll('.color-btn').forEach((btn) => {
+    colorButtons.forEach((btn) => {
         btn.addEventListener('click', () => {
-            currentColor = btn.dataset.color;
-            drawMode = 'draw';
-            document.querySelectorAll('.color-btn').forEach((b) => b.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById('drawBtn').classList.add('active');
-            document.getElementById('eraseBtn').classList.remove('active');
+            if (!btn.dataset.color) {
+                return;
+            }
+            setActiveColor(btn.dataset.color);
+            setTool('draw');
         });
     });
 
-    document.getElementById('brushSize').addEventListener('input', (event) => {
-        currentWidth = parseInt(event.target.value, 10) || 5;
-    });
-
-    document.getElementById('drawBtn').addEventListener('click', () => {
-        drawMode = 'draw';
-        document.getElementById('drawBtn').classList.add('active');
-        document.getElementById('eraseBtn').classList.remove('active');
-    });
-
-    document.getElementById('eraseBtn').addEventListener('click', () => {
-        drawMode = 'erase';
-        document.getElementById('eraseBtn').classList.add('active');
-        document.getElementById('drawBtn').classList.remove('active');
-        document.querySelectorAll('.color-btn').forEach((b) => b.classList.remove('active'));
-    });
-
-    document.getElementById('clearBtn').addEventListener('click', () => {
-        paths = [];
-        redrawCanvas();
-        pushHistory();
-        broadcastCanvas('clear');
-    });
-
-    document.getElementById('undoBtn').addEventListener('click', () => {
-        if (currentStep <= 0) return;
-        currentStep -= 1;
-        restoreFromHistory(history[currentStep]);
-        broadcastCanvas('undo');
-    });
-
-    document.getElementById('redoBtn').addEventListener('click', () => {
-        if (currentStep >= history.length - 1) return;
-        currentStep += 1;
-        restoreFromHistory(history[currentStep]);
-        broadcastCanvas('redo');
-    });
-
-    if (stylusModeToggle && stylusModeStatus) {
-        stylusModeToggle.addEventListener('click', () => {
-            stylusMode = !stylusMode;
-            stylusModeToggle.setAttribute('aria-pressed', String(stylusMode));
-            stylusModeStatus.textContent = stylusMode ? 'On' : 'Off';
+    brushSizeInputs.forEach((input) => {
+        input.addEventListener('input', (event) => {
+            const value = parseInt(event.target.value, 10) || 5;
+            currentWidth = value;
+            syncBrushSizeInputs(event.target, value);
         });
+    });
+
+    toolButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const { tool } = btn.dataset;
+            if (!tool) {
+                return;
+            }
+            setTool(tool);
+        });
+    });
+
+    actionButtons.clear.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            paths = [];
+            redrawCanvas();
+            pushHistory();
+            broadcastCanvas('clear');
+        });
+    });
+
+    actionButtons.undo.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (currentStep <= 0) return;
+            currentStep -= 1;
+            restoreFromHistory(history[currentStep]);
+            broadcastCanvas('undo');
+        });
+    });
+
+    actionButtons.redo.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (currentStep >= history.length - 1) return;
+            currentStep += 1;
+            restoreFromHistory(history[currentStep]);
+            broadcastCanvas('redo');
+        });
+    });
+
+    stylusToggleButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            setStylusMode(!stylusMode);
+        });
+    });
+
+    syncBrushSizeInputs(null, currentWidth);
+    setActiveColor(currentColor);
+    setTool(drawMode);
+    setStylusMode(stylusMode);
+}
+
+function setActiveColor(color) {
+    if (!color) {
+        return;
     }
+
+    currentColor = color;
+    updateColorUI();
+}
+
+function updateColorUI() {
+    colorButtons.forEach((btn) => {
+        if (!btn?.dataset?.color) {
+            return;
+        }
+
+        const isActive = drawMode === 'draw' && btn.dataset.color === currentColor;
+        btn.classList.toggle('active', isActive);
+    });
+}
+
+function syncBrushSizeInputs(sourceInput, value) {
+    brushSizeInputs.forEach((input) => {
+        if (!input) {
+            return;
+        }
+
+        if (input !== sourceInput) {
+            input.value = value;
+        }
+
+        input.setAttribute('aria-valuenow', String(value));
+    });
+}
+
+function setTool(tool) {
+    const nextMode = tool === 'erase' ? 'erase' : 'draw';
+    drawMode = nextMode;
+
+    toolButtons.forEach((btn) => {
+        if (!btn?.dataset?.tool) {
+            return;
+        }
+
+        const isActive = btn.dataset.tool === nextMode;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', String(isActive));
+    });
+
+    if (drawMode === 'draw') {
+        updateColorUI();
+    } else {
+        colorButtons.forEach((btn) => btn.classList.remove('active'));
+    }
+}
+
+function setStylusMode(enabled) {
+    stylusMode = Boolean(enabled);
+
+    stylusToggleButtons.forEach((btn) => {
+        if (!btn) {
+            return;
+        }
+
+        btn.setAttribute('aria-pressed', String(stylusMode));
+        btn.classList.toggle('active', stylusMode);
+    });
+
+    stylusStatusLabels.forEach((label) => {
+        if (label) {
+            label.textContent = stylusMode ? 'On' : 'Off';
+        }
+    });
 }
 
 function setupFullscreenControls() {
@@ -335,6 +434,11 @@ function updateFullscreenUI() {
 
     if (canvasPanel) {
         canvasPanel.classList.toggle('canvas-panel--fullscreen', isFullscreen);
+    }
+
+    if (canvasTopbar) {
+        canvasTopbar.setAttribute('aria-hidden', String(!isFullscreen));
+        canvasTopbar.classList.toggle('canvas-topbar--visible', isFullscreen);
     }
 
     fullscreenToggle.setAttribute('aria-pressed', String(isFullscreen));
@@ -522,8 +626,20 @@ function restoreFromHistory(historyItem) {
 }
 
 function updateButtons() {
-    document.getElementById('undoBtn').disabled = currentStep <= 0;
-    document.getElementById('redoBtn').disabled = currentStep >= history.length - 1;
+    const canUndo = currentStep > 0;
+    const canRedo = currentStep < history.length - 1;
+
+    actionButtons.undo.forEach((btn) => {
+        if (btn) {
+            btn.disabled = !canUndo;
+        }
+    });
+
+    actionButtons.redo.forEach((btn) => {
+        if (btn) {
+            btn.disabled = !canRedo;
+        }
+    });
 }
 
 function redrawCanvas() {
@@ -764,8 +880,28 @@ function shouldIgnoreEvent(event) {
         return false;
     }
 
-    if (typeof event.pointerType === 'string') {
-        return event.pointerType !== 'pen' && event.pointerType !== 'mouse';
+    if (typeof event.pointerType === 'string' && event.pointerType !== '') {
+        if (event.pointerType === 'pen' || event.pointerType === 'mouse') {
+            return false;
+        }
+
+        if (event.pointerType === 'touch') {
+            const averageWidth = typeof event.width === 'number' && typeof event.height === 'number'
+                ? (event.width + event.height) / 2
+                : null;
+
+            if (averageWidth && averageWidth <= 14) {
+                return false;
+            }
+
+            if (typeof event.pressure === 'number' && event.pressure > 0 && (!averageWidth || averageWidth <= 18)) {
+                return false;
+            }
+
+            return true;
+        }
+
+        return true;
     }
 
     if (event.type && event.type.includes('touch')) {
@@ -782,7 +918,23 @@ function shouldIgnoreEvent(event) {
             return false;
         }
 
-        return true;
+        const radiusX = typeof touch.radiusX === 'number' ? touch.radiusX : null;
+        const radiusY = typeof touch.radiusY === 'number' ? touch.radiusY : null;
+        const averageRadius = radiusX && radiusY ? (radiusX + radiusY) / 2 : radiusX || radiusY;
+
+        if (averageRadius && averageRadius <= 18) {
+            return false;
+        }
+
+        if (typeof touch.force === 'number' && touch.force > 0 && (!averageRadius || averageRadius <= 20)) {
+            return false;
+        }
+
+        if (event.touches && event.touches.length > 1) {
+            return true;
+        }
+
+        return averageRadius ? averageRadius > 24 : false;
     }
 
     return false;
