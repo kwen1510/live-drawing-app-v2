@@ -25,6 +25,8 @@ const fullscreenToggle = document.getElementById('fullscreenToggle');
 const fullscreenEnterIcon = document.getElementById('fullscreenEnterIcon');
 const fullscreenExitIcon = document.getElementById('fullscreenExitIcon');
 const fullscreenToggleLabel = document.getElementById('fullscreenToggleLabel');
+const stylusModeToggle = document.getElementById('stylusModeToggle');
+const stylusModeStatus = document.getElementById('stylusModeStatus');
 const ctx = canvas.getContext('2d');
 canvas.style.width = '100%';
 canvas.style.height = 'auto';
@@ -45,6 +47,8 @@ let history = [];
 let currentStep = -1;
 let backgroundImageData = null;
 let backgroundImageElement = null;
+let stylusMode = false;
+let activePointerId = null;
 
 const supabaseUrl = window.SUPABASE_URL;
 const supabaseAnonKey = window.SUPABASE_ANON_KEY;
@@ -179,14 +183,27 @@ function announceStudent() {
 }
 
 function setupControls() {
-    canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mousemove', drawStroke);
-    canvas.addEventListener('mouseup', stopDrawing);
-    canvas.addEventListener('mouseout', stopDrawing);
+    if (!canvas) return;
 
-    canvas.addEventListener('touchstart', startDrawing, { passive: false });
-    canvas.addEventListener('touchmove', drawStroke, { passive: false });
-    canvas.addEventListener('touchend', stopDrawing, { passive: false });
+    canvas.style.touchAction = 'none';
+
+    if (window.PointerEvent) {
+        canvas.addEventListener('pointerdown', startDrawing, { passive: false });
+        canvas.addEventListener('pointermove', drawStroke, { passive: false });
+        canvas.addEventListener('pointerup', stopDrawing, { passive: false });
+        canvas.addEventListener('pointercancel', stopDrawing, { passive: false });
+        canvas.addEventListener('pointerout', stopDrawing, { passive: false });
+    } else {
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', drawStroke);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+
+        canvas.addEventListener('touchstart', startDrawing, { passive: false });
+        canvas.addEventListener('touchmove', drawStroke, { passive: false });
+        canvas.addEventListener('touchend', stopDrawing, { passive: false });
+        canvas.addEventListener('touchcancel', stopDrawing, { passive: false });
+    }
 
     document.querySelectorAll('.color-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -236,6 +253,14 @@ function setupControls() {
         restoreFromHistory(history[currentStep]);
         broadcastCanvas('redo');
     });
+
+    if (stylusModeToggle && stylusModeStatus) {
+        stylusModeToggle.addEventListener('click', () => {
+            stylusMode = !stylusMode;
+            stylusModeToggle.setAttribute('aria-pressed', String(stylusMode));
+            stylusModeStatus.textContent = stylusMode ? 'On' : 'Off';
+        });
+    }
 }
 
 function setupFullscreenControls() {
@@ -337,7 +362,27 @@ function isCanvasFullscreen() {
 }
 
 function startDrawing(event) {
-    event.preventDefault();
+    if (shouldIgnoreEvent(event)) {
+        return;
+    }
+
+    if (event?.preventDefault) {
+        event.preventDefault();
+    }
+
+    if (typeof event?.pointerId === 'number') {
+        activePointerId = event.pointerId;
+        if (typeof canvas.setPointerCapture === 'function') {
+            try {
+                canvas.setPointerCapture(activePointerId);
+            } catch (error) {
+                console.warn('Failed to capture pointer', error);
+            }
+        }
+    } else {
+        activePointerId = null;
+    }
+
     const { x, y } = getCanvasCoordinates(event);
     isDrawing = true;
     lastX = x;
@@ -363,7 +408,18 @@ function startDrawing(event) {
 
 function drawStroke(event) {
     if (!isDrawing) return;
-    event.preventDefault();
+
+    if (typeof event?.pointerId === 'number' && activePointerId !== null && event.pointerId !== activePointerId) {
+        return;
+    }
+
+    if (shouldIgnoreEvent(event)) {
+        return;
+    }
+
+    if (event?.preventDefault) {
+        event.preventDefault();
+    }
 
     const { x, y } = getCanvasCoordinates(event);
 
@@ -396,8 +452,25 @@ function drawStroke(event) {
     lastY = y;
 }
 
-function stopDrawing() {
+function stopDrawing(event) {
     if (!isDrawing) return;
+
+    if (typeof event?.pointerId === 'number' && activePointerId !== null && event.pointerId !== activePointerId) {
+        return;
+    }
+
+    if (event?.preventDefault) {
+        event.preventDefault();
+    }
+
+    if (typeof event?.pointerId === 'number' && typeof canvas.releasePointerCapture === 'function') {
+        try {
+            canvas.releasePointerCapture(event.pointerId);
+        } catch (error) {
+            console.warn('Failed to release pointer', error);
+        }
+    }
+
     isDrawing = false;
 
     if (drawMode === 'draw' && currentPath) {
@@ -406,6 +479,8 @@ function stopDrawing() {
         pushHistory();
         broadcastCanvas('update');
     }
+
+    activePointerId = null;
 }
 
 function pushHistory() {
@@ -680,6 +755,35 @@ function getCanvasCoordinates(event) {
         x: (event.clientX - rect.left) * scaleX,
         y: (event.clientY - rect.top) * scaleY
     };
+}
+
+function shouldIgnoreEvent(event) {
+    if (!stylusMode || !event) {
+        return false;
+    }
+
+    if (typeof event.pointerType === 'string') {
+        return event.pointerType !== 'pen' && event.pointerType !== 'mouse';
+    }
+
+    if (event.type && event.type.includes('touch')) {
+        const touch = event.touches?.[0] || event.changedTouches?.[0];
+        if (!touch) {
+            return true;
+        }
+
+        if (typeof touch.touchType === 'string') {
+            return touch.touchType !== 'stylus';
+        }
+
+        if (typeof touch.altitudeAngle === 'number' || typeof touch.azimuthAngle === 'number') {
+            return false;
+        }
+
+        return true;
+    }
+
+    return false;
 }
 
 function clonePaths(source) {
