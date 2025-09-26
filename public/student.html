@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Live Drawing Tool - Student Workspace</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -68,7 +68,7 @@
                 </div>
             </div>
             <div class="canvas-wrapper" id="canvasWrapper">
-                <div class="canvas-topbar" id="canvasTopbar" aria-hidden="true">
+                <div class="canvas-topbar" id="canvasTopbar" aria-hidden="false">
                     <div class="canvas-topbar__section canvas-topbar__section--history" role="group" aria-label="Canvas history">
                         <button class="quick-action-btn" type="button" data-action="undo" aria-label="Undo" title="Undo">
                             <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -119,7 +119,7 @@
                     </div>
                 </div>
                 <canvas id="drawingCanvas"></canvas>
-                <div class="canvas-panel__quick-actions" aria-label="Canvas actions">
+                <div class="canvas-panel__quick-actions" aria-label="Canvas actions" aria-hidden="true" hidden>
                     <div class="quick-actions__cluster" role="group" aria-label="History">
                         <button class="quick-action-btn" type="button" data-action="undo" aria-label="Undo" title="Undo">
                             <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
