@@ -3,6 +3,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const statusBadge = document.getElementById('sessionStatusBadge');
 const connectionStatus = document.getElementById('connection-status');
 const studentGrid = document.getElementById('studentGrid');
+const gridColumnsSelect = document.getElementById('gridColumnsSelect');
 const sessionCodeEl = document.getElementById('sessionCode');
 const sessionUrlInput = document.getElementById('sessionUrl');
 const copyBtn = document.getElementById('copyBtn');
@@ -14,6 +15,11 @@ const referencePreviewImage = document.getElementById('referencePreviewImage');
 const referenceStatus = document.getElementById('referenceStatus');
 const referenceFileName = document.getElementById('referenceFileName');
 const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+const studentModal = document.getElementById('studentModal');
+const studentModalCanvas = document.getElementById('studentModalCanvas');
+const studentModalTitle = document.getElementById('studentModalTitle');
+const studentModalSubtitle = document.getElementById('studentModalSubtitle');
+const studentModalClose = document.getElementById('studentModalClose');
 const BASE_CANVAS_WIDTH = 800;
 const BASE_CANVAS_HEIGHT = 600;
 
@@ -25,8 +31,12 @@ let syncInterval = null;
 let selectedImageData = null;
 let selectedImageName = '';
 let activeBackgroundImage = null;
+let preferredGridColumns = 3;
+let activeModalStudent = null;
+let modalReturnFocus = null;
 const presenceKey = `teacher-${Math.random().toString(36).slice(2, 10)}`;
 const students = new Map();
+const GRID_STORAGE_KEY = 'teacher-grid-columns';
 
 const supabaseUrl = window.SUPABASE_URL;
 const supabaseAnonKey = window.SUPABASE_ANON_KEY;
@@ -90,6 +100,8 @@ async function initialiseTeacherConsole() {
 
     setupCopyButton();
     setupClassroomControls();
+    setupStudentGridControls();
+    setupStudentModal();
     window.addEventListener('beforeunload', handleWindowUnload);
 }
 
@@ -111,37 +123,9 @@ function wireChannelEvents() {
     channel.on('broadcast', { event: 'draw_batch' }, ({ payload }) => {
         const { username, batch } = payload || {};
         if (!username || !Array.isArray(batch)) return;
-        ensureStudentCard(username);
-
-        const student = students.get(username);
-        const { ctx } = student;
-        batch.forEach((data) => {
-            if (data.type === 'line') {
-                ctx.beginPath();
-                ctx.moveTo(data.startX, data.startY);
-                ctx.lineTo(data.endX, data.endY);
-                ctx.strokeStyle = data.color;
-                ctx.lineWidth = data.width;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.stroke();
-            } else if (data.type === 'dot') {
-                ctx.beginPath();
-                ctx.arc(data.x, data.y, data.radius, 0, Math.PI * 2);
-                ctx.fillStyle = data.color;
-                ctx.fill();
-            } else if (data.type === 'quadratic') {
-                ctx.beginPath();
-                ctx.moveTo(data.startX, data.startY);
-                ctx.quadraticCurveTo(data.controlX, data.controlY, data.endX, data.endY);
-                ctx.strokeStyle = data.color;
-                ctx.lineWidth = data.width;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.stroke();
-            }
-        });
-
+        const student = ensureStudentCard(username);
+        if (!student) return;
+        applyDrawBatch(student, batch);
         updateStudentActivity(username);
     });
 
@@ -178,6 +162,9 @@ function handlePresenceSync() {
 
     students.forEach((value, username) => {
         if (!activeStudents.has(username)) {
+            if (activeModalStudent === username) {
+                closeStudentModal();
+            }
             value.container.remove();
             students.delete(username);
         }
@@ -204,19 +191,30 @@ function ensureStudentCard(username) {
     const statusDot = document.createElement('span');
     statusDot.className = 'student-card__status-dot';
 
+    const identity = document.createElement('div');
+    identity.className = 'student-card__identity';
+    identity.appendChild(nameEl);
+    identity.appendChild(statusDot);
+
+    const expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
+    expandBtn.className = 'student-card__expand';
+    expandBtn.textContent = 'Expand';
+    expandBtn.addEventListener('click', () => openStudentModal(username, expandBtn));
+
     const updatedAt = document.createElement('p');
     updatedAt.className = 'student-card__meta';
     updatedAt.textContent = 'Awaiting activity';
 
-    header.appendChild(nameEl);
-    header.appendChild(statusDot);
+    header.appendChild(identity);
+    header.appendChild(expandBtn);
 
     const canvasWrapper = document.createElement('div');
     canvasWrapper.className = 'student-card__canvas';
 
     const canvas = document.createElement('canvas');
-    canvas.width = 420;
-    canvas.height = 320;
+    canvas.width = 520;
+    canvas.height = 390;
     canvasWrapper.appendChild(canvas);
 
     container.appendChild(header);
@@ -239,7 +237,9 @@ function ensureStudentCard(username) {
         lastActivity: Date.now(),
         backgroundImageData: null,
         backgroundImageElement: null,
-        paths: []
+        paths: [],
+        previewCanvas: null,
+        previewCtx: null
     };
 
     students.set(username, student);
@@ -252,6 +252,13 @@ function updateStudentCanvas(username, canvasState) {
 
     student.paths = Array.isArray(canvasState.paths) ? canvasState.paths : [];
 
+    const markSynced = () => {
+        setStudentSyncState(username, true);
+        if (activeModalStudent === username) {
+            updateStudentModalMeta(student);
+        }
+    };
+
     const backgroundData = typeof canvasState.backgroundImage === 'string' && canvasState.backgroundImage.length > 0
         ? canvasState.backgroundImage
         : null;
@@ -262,7 +269,7 @@ function updateStudentCanvas(username, canvasState) {
         if (!backgroundData) {
             student.backgroundImageElement = null;
             drawStudentCanvas(student);
-            setStudentSyncState(username, true);
+            markSynced();
             return;
         }
 
@@ -273,20 +280,20 @@ function updateStudentCanvas(username, canvasState) {
 
             student.backgroundImageElement = image;
             drawStudentCanvas(student);
-            setStudentSyncState(username, true);
+            markSynced();
         }).catch(() => {
             if (student.backgroundImageData === backgroundData) {
                 student.backgroundImageElement = null;
                 drawStudentCanvas(student);
-                setStudentSyncState(username, true);
+                markSynced();
             }
         });
-        setStudentSyncState(username, true);
+        markSynced();
         return;
     }
 
     drawStudentCanvas(student);
-    setStudentSyncState(username, true);
+    markSynced();
 }
 
 function resetCanvas(ctx, canvas) {
@@ -304,6 +311,10 @@ function updateStudentActivity(username) {
     student.lastActivity = Date.now();
     student.updatedAt.textContent = `Last update ${new Date().toLocaleTimeString()}`;
     setStudentSyncState(username, true);
+
+    if (activeModalStudent === username) {
+        updateStudentModalMeta(student);
+    }
 }
 
 function setStudentSyncState(username, isSynced) {
@@ -319,6 +330,186 @@ function updateConnectionStatus() {
     }
 
     connectionStatus.textContent = `${students.size} student${students.size === 1 ? '' : 's'} connected`;
+}
+
+function setupStudentGridControls() {
+    if (!studentGrid) {
+        return;
+    }
+
+    if (gridColumnsSelect) {
+        let storedPreference = null;
+        try {
+            const stored = window.localStorage?.getItem(GRID_STORAGE_KEY);
+            if (stored) {
+                const parsed = parseInt(stored, 10);
+                if (Number.isFinite(parsed)) {
+                    storedPreference = parsed;
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to read stored grid preference', error);
+        }
+
+        const initial = storedPreference ?? parseInt(gridColumnsSelect.value, 10) ?? preferredGridColumns;
+        preferredGridColumns = clampNumber(initial, 1, 6);
+        gridColumnsSelect.value = String(preferredGridColumns);
+
+        gridColumnsSelect.addEventListener('change', () => {
+            const parsed = parseInt(gridColumnsSelect.value, 10);
+            if (!Number.isFinite(parsed)) {
+                return;
+            }
+
+            preferredGridColumns = clampNumber(parsed, 1, 6);
+            try {
+                window.localStorage?.setItem(GRID_STORAGE_KEY, String(preferredGridColumns));
+            } catch (error) {
+                console.warn('Failed to persist grid preference', error);
+            }
+            refreshGridColumns();
+        });
+    }
+
+    refreshGridColumns();
+    window.addEventListener('resize', refreshGridColumns, { passive: true });
+}
+
+function refreshGridColumns() {
+    if (!studentGrid) {
+        return;
+    }
+
+    const appliedColumns = Math.min(preferredGridColumns, getMaxColumnsForViewport());
+    studentGrid.style.setProperty('--student-grid-columns', appliedColumns);
+    studentGrid.dataset.columns = String(appliedColumns);
+
+    if (gridColumnsSelect) {
+        gridColumnsSelect.dataset.applied = String(appliedColumns);
+        const limited = appliedColumns !== preferredGridColumns;
+        gridColumnsSelect.title = limited
+            ? `Showing ${appliedColumns} per row (limited by screen size)`
+            : `Showing ${appliedColumns} per row`;
+    }
+}
+
+function getMaxColumnsForViewport() {
+    const width = window.innerWidth || document.documentElement.clientWidth || 0;
+    if (width <= 640) {
+        return 1;
+    }
+    if (width <= 1100) {
+        return 2;
+    }
+    return 6;
+}
+
+function clampNumber(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function setupStudentModal() {
+    if (!studentModal || !studentModalCanvas || !studentModalClose) {
+        return;
+    }
+
+    studentModal.addEventListener('click', (event) => {
+        if (event.target === studentModal) {
+            closeStudentModal();
+        }
+    });
+
+    studentModalClose.addEventListener('click', () => {
+        closeStudentModal();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && activeModalStudent) {
+            closeStudentModal();
+        }
+    });
+}
+
+function openStudentModal(username, triggerElement) {
+    if (!studentModal || !studentModalCanvas) {
+        return;
+    }
+
+    const student = students.get(username);
+    if (!student) {
+        return;
+    }
+
+    if (activeModalStudent && activeModalStudent !== username) {
+        const previous = students.get(activeModalStudent);
+        if (previous) {
+            previous.previewCanvas = null;
+            previous.previewCtx = null;
+        }
+    }
+
+    activeModalStudent = username;
+    modalReturnFocus = triggerElement || null;
+
+    studentModalCanvas.width = 1024;
+    studentModalCanvas.height = 768;
+    student.previewCanvas = studentModalCanvas;
+    student.previewCtx = studentModalCanvas.getContext('2d');
+
+    document.body.classList.add('modal-open');
+    studentModal.removeAttribute('hidden');
+    studentModal.classList.add('student-modal--open');
+    studentModal.setAttribute('aria-hidden', 'false');
+
+    if (studentModalTitle) {
+        studentModalTitle.textContent = username;
+    }
+
+    updateStudentModalMeta(student);
+    drawStudentCanvas(student);
+
+    if (studentModalClose) {
+        studentModalClose.focus();
+    }
+}
+
+function closeStudentModal() {
+    if (!studentModal) {
+        return;
+    }
+
+    if (activeModalStudent) {
+        const student = students.get(activeModalStudent);
+        if (student) {
+            student.previewCanvas = null;
+            student.previewCtx = null;
+        }
+    }
+
+    activeModalStudent = null;
+
+    studentModal.classList.remove('student-modal--open');
+    studentModal.setAttribute('hidden', '');
+    studentModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+
+    if (modalReturnFocus && typeof modalReturnFocus.focus === 'function' && document.contains(modalReturnFocus)) {
+        modalReturnFocus.focus();
+    }
+    modalReturnFocus = null;
+}
+
+function updateStudentModalMeta(student) {
+    if (!studentModalSubtitle) {
+        return;
+    }
+
+    if (!student) {
+        studentModalSubtitle.textContent = '';
+        return;
+    }
+
+    studentModalSubtitle.textContent = student.updatedAt?.textContent || '';
 }
 
 function startSyncLoop() {
@@ -560,36 +751,132 @@ function clearAllStudentCanvases() {
         student.backgroundImageData = null;
         student.backgroundImageElement = null;
         student.paths = [];
-        resetCanvas(student.ctx, student.canvas);
+        drawStudentCanvas(student);
         student.updatedAt.textContent = 'Awaiting activity';
         setStudentSyncState(username, true);
+        if (activeModalStudent === username) {
+            updateStudentModalMeta(student);
+        }
+    });
+}
+
+function applyDrawBatch(student, batch) {
+    if (!student || !Array.isArray(batch) || batch.length === 0) {
+        return;
+    }
+
+    const targets = getStudentTargets(student);
+    if (targets.length === 0) {
+        return;
+    }
+
+    targets.forEach(({ ctx }) => {
+        drawBatchToContext(ctx, batch);
+    });
+}
+
+function drawBatchToContext(ctx, batch) {
+    if (!ctx) {
+        return;
+    }
+
+    batch.forEach((data) => {
+        if (!data) {
+            return;
+        }
+
+        if (data.type === 'line') {
+            ctx.beginPath();
+            ctx.moveTo(data.startX, data.startY);
+            ctx.lineTo(data.endX, data.endY);
+            ctx.strokeStyle = data.color;
+            ctx.lineWidth = data.width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+        } else if (data.type === 'dot') {
+            ctx.beginPath();
+            ctx.arc(data.x, data.y, data.radius, 0, Math.PI * 2);
+            ctx.fillStyle = data.color;
+            ctx.fill();
+        } else if (data.type === 'quadratic') {
+            ctx.beginPath();
+            ctx.moveTo(data.startX, data.startY);
+            ctx.quadraticCurveTo(data.controlX, data.controlY, data.endX, data.endY);
+            ctx.strokeStyle = data.color;
+            ctx.lineWidth = data.width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+        }
     });
 }
 
 function drawStudentCanvas(student) {
-    const { ctx, canvas, backgroundImageElement, paths } = student;
-    resetCanvas(ctx, canvas);
+    const targets = getStudentTargets(student);
+    if (targets.length === 0) {
+        return;
+    }
 
-    if (backgroundImageElement) {
-        if (backgroundImageElement.complete) {
-            drawStudentBackground(ctx, backgroundImageElement);
-            renderStudentPaths(ctx, paths);
+    const resetTargets = () => {
+        targets.forEach(({ ctx, canvas }) => {
+            resetCanvas(ctx, canvas);
+        });
+    };
+
+    const renderWithBackground = () => {
+        targets.forEach(({ ctx }) => {
+            drawStudentBackground(ctx, student.backgroundImageElement);
+            renderStudentPaths(ctx, student.paths);
+        });
+    };
+
+    const renderWithoutBackground = () => {
+        targets.forEach(({ ctx }) => {
+            renderStudentPaths(ctx, student.paths);
+        });
+    };
+
+    resetTargets();
+
+    if (student.backgroundImageElement) {
+        if (student.backgroundImageElement.complete) {
+            renderWithBackground();
         } else {
-            backgroundImageElement.onload = () => {
-                drawStudentBackground(ctx, backgroundImageElement);
-                renderStudentPaths(ctx, paths);
-                backgroundImageElement.onload = null;
+            student.backgroundImageElement.onload = () => {
+                resetTargets();
+                renderWithBackground();
+                student.backgroundImageElement.onload = null;
             };
-            backgroundImageElement.onerror = () => {
-                renderStudentPaths(ctx, paths);
-                backgroundImageElement.onload = null;
-                backgroundImageElement.onerror = null;
+            student.backgroundImageElement.onerror = () => {
+                resetTargets();
+                renderWithoutBackground();
+                student.backgroundImageElement.onload = null;
+                student.backgroundImageElement.onerror = null;
             };
         }
         return;
     }
 
-    renderStudentPaths(ctx, paths);
+    renderWithoutBackground();
+}
+
+function getStudentTargets(student) {
+    if (!student) {
+        return [];
+    }
+
+    const targets = [];
+
+    if (student.ctx && student.canvas) {
+        targets.push({ ctx: student.ctx, canvas: student.canvas });
+    }
+
+    if (student.previewCtx && student.previewCanvas) {
+        targets.push({ ctx: student.previewCtx, canvas: student.previewCanvas });
+    }
+
+    return targets;
 }
 
 function renderStudentPaths(ctx, paths) {
