@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Live Drawing Tool - Student Workspace</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -68,7 +68,7 @@
                 </div>
             </div>
             <div class="canvas-wrapper" id="canvasWrapper">
-                <div class="canvas-topbar" id="canvasTopbar" aria-hidden="true">
+                <div class="canvas-topbar" id="canvasTopbar" role="toolbar" aria-label="Drawing controls">
                     <div class="canvas-topbar__section canvas-topbar__section--history" role="group" aria-label="Canvas history">
                         <button class="quick-action-btn" type="button" data-action="undo" aria-label="Undo" title="Undo">
                             <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -80,6 +80,13 @@
                             <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <polyline points="15 3 21 9 15 15"></polyline>
                                 <path d="M21 9H11a5 5 0 0 0 0 10h3"></path>
+                            </svg>
+                        </button>
+                        <button class="quick-action-btn quick-action-btn--danger" type="button" data-action="clear" aria-label="Clear canvas" title="Clear canvas">
+                            <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M3 6h18"></path>
+                                <path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"></path>
+                                <path d="M10 6l1-3h2l1 3"></path>
                             </svg>
                         </button>
                     </div>
@@ -119,92 +126,8 @@
                     </div>
                 </div>
                 <canvas id="drawingCanvas"></canvas>
-                <div class="canvas-panel__quick-actions" aria-label="Canvas actions">
-                    <div class="quick-actions__cluster" role="group" aria-label="History">
-                        <button class="quick-action-btn" type="button" data-action="undo" aria-label="Undo" title="Undo">
-                            <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <polyline points="9 15 3 9 9 3"></polyline>
-                                <path d="M3 9h10a5 5 0 0 1 0 10h-3"></path>
-                            </svg>
-                        </button>
-                        <button class="quick-action-btn" type="button" data-action="redo" aria-label="Redo" title="Redo">
-                            <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <polyline points="15 3 21 9 15 15"></polyline>
-                                <path d="M21 9H11a5 5 0 0 0 0 10h3"></path>
-                            </svg>
-                        </button>
-                        <button class="quick-action-btn quick-action-btn--danger" type="button" data-action="clear" aria-label="Clear canvas" title="Clear canvas">
-                            <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M3 6h18"></path>
-                                <path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"></path>
-                                <path d="M10 6l1-3h2l1 3"></path>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="quick-actions__cluster" role="group" aria-label="Drawing mode">
-                        <button class="tool-btn" type="button" data-tool="draw" aria-pressed="false">
-                            <svg class="tool-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M3 17.25V21h3.75L19.81 7.94a1.06 1.06 0 0 0 0-1.5l-2.25-2.25a1.06 1.06 0 0 0-1.5 0L3 17.25z" fill="currentColor"></path>
-                                <path d="M14.75 6.04l3.21 3.21"></path>
-                            </svg>
-                            <span class="tool-btn__label">Brush</span>
-                        </button>
-                        <button class="tool-btn" type="button" data-tool="erase" aria-pressed="false">
-                            <svg class="tool-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M3.5 16.5 13.5 6.5a2 2 0 0 1 2.83 0l4.17 4.17a2 2 0 0 1 0 2.83l-6.5 6.5H3.5z" fill="currentColor"></path>
-                                <path d="M6 19.5h7"></path>
-                            </svg>
-                            <span class="tool-btn__label">Eraser</span>
-                        </button>
-                    </div>
-                    <div class="quick-actions__cluster quick-actions__cluster--stylus" role="group" aria-label="Stylus mode">
-                        <button class="toggle-btn toggle-btn--compact" type="button" data-stylus-toggle aria-pressed="true">
-                            <span class="toggle-btn__label">Stylus</span>
-                            <span class="toggle-btn__status" data-stylus-status>On</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="canvas-panel__color-rail" role="group" aria-label="Quick color markers">
-                <button class="color-btn black" data-color="#1e1b4b" aria-label="Black"></button>
-                <button class="color-btn blue" data-color="#2563eb" aria-label="Blue"></button>
-                <button class="color-btn red" data-color="#f43f5e" aria-label="Red"></button>
-                <button class="color-btn green" data-color="#10b981" aria-label="Green"></button>
             </div>
         </section>
-
-        <aside class="control-panel">
-            <div class="control-group">
-                <h2>Colors</h2>
-                <div class="color-buttons">
-                    <button class="color-btn black" data-color="#1e1b4b" aria-label="Black"></button>
-                    <button class="color-btn blue" data-color="#2563eb" aria-label="Blue"></button>
-                    <button class="color-btn red" data-color="#f43f5e" aria-label="Red"></button>
-                    <button class="color-btn green" data-color="#10b981" aria-label="Green"></button>
-                </div>
-            </div>
-
-            <div class="control-group">
-                <h2>Brush size</h2>
-                <label class="slider-field">
-                    <span class="chip-label">Adjust width</span>
-                    <input type="range" data-brush-size min="1" max="20" value="5">
-                </label>
-            </div>
-
-            <div class="control-group">
-                <h2>Input</h2>
-                <button class="toggle-btn" type="button" data-stylus-toggle aria-pressed="true">
-                    <span class="toggle-btn__label">Stylus mode</span>
-                    <span class="toggle-btn__status" data-stylus-status>On</span>
-                </button>
-                <p class="control-hint">Ignore accidental finger touches while drawing with a stylus.</p>
-            </div>
-
-            <div class="control-note">
-                <p>Your canvas is private to you and your teacher. We periodically sync so nothing gets lost.</p>
-            </div>
-        </aside>
     </main>
 </body>
 </html>

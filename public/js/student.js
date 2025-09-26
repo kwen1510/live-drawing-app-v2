@@ -27,6 +27,8 @@ const fullscreenEnterIcon = document.getElementById('fullscreenEnterIcon');
 const fullscreenExitIcon = document.getElementById('fullscreenExitIcon');
 const fullscreenToggleLabel = document.getElementById('fullscreenToggleLabel');
 const ctx = canvas.getContext('2d');
+const BASE_CANVAS_WIDTH = 800;
+const BASE_CANVAS_HEIGHT = 600;
 const colorButtons = Array.from(document.querySelectorAll('.color-btn'));
 const toolButtons = Array.from(document.querySelectorAll('[data-tool]'));
 const brushSizeInputs = Array.from(document.querySelectorAll('[data-brush-size]'));
@@ -39,8 +41,10 @@ const actionButtons = {
 };
 canvas.style.width = '100%';
 canvas.style.height = 'auto';
-canvas.width = 800;
-canvas.height = 600;
+canvas.width = BASE_CANVAS_WIDTH;
+canvas.height = BASE_CANVAS_HEIGHT;
+ctx.lineCap = 'round';
+ctx.lineJoin = 'round';
 ctx.fillStyle = '#ffffff';
 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -58,6 +62,8 @@ let backgroundImageData = null;
 let backgroundImageElement = null;
 let stylusMode = true;
 let activePointerId = null;
+let viewportZoomLocked = false;
+let selectionGuardsInstalled = false;
 
 const supabaseUrl = window.SUPABASE_URL;
 const supabaseAnonKey = window.SUPABASE_ANON_KEY;
@@ -194,6 +200,14 @@ function announceStudent() {
 function setupControls() {
     if (!canvas) return;
 
+    lockViewportZoomForIOS();
+
+    if (!selectionGuardsInstalled) {
+        document.addEventListener('selectstart', preventPanelSelection);
+        document.addEventListener('dragstart', preventPanelSelection);
+        selectionGuardsInstalled = true;
+    }
+
     canvas.style.touchAction = 'none';
     if (canvasWrapper) {
         canvasWrapper.style.touchAction = 'none';
@@ -202,6 +216,10 @@ function setupControls() {
     if (canvasPanel) {
         canvasPanel.style.touchAction = 'none';
     }
+
+    canvas.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+    });
 
     if (window.PointerEvent) {
         canvas.addEventListener('pointerdown', startDrawing, { passive: false });
@@ -288,6 +306,12 @@ function setupControls() {
     setStylusMode(stylusMode);
 }
 
+function preventPanelSelection(event) {
+    if (event.target && event.target.closest('.canvas-panel')) {
+        event.preventDefault();
+    }
+}
+
 function setActiveColor(color) {
     if (!color) {
         return;
@@ -371,12 +395,6 @@ function setupFullscreenControls() {
         toggleFullscreen();
     });
 
-    if (canvasWrapper) {
-        canvasWrapper.addEventListener('dblclick', () => {
-            toggleFullscreen();
-        });
-    }
-
     const fullscreenEvents = ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'];
     fullscreenEvents.forEach((eventName) => {
         document.addEventListener(eventName, updateFullscreenUI);
@@ -437,8 +455,8 @@ function updateFullscreenUI() {
     }
 
     if (canvasTopbar) {
-        canvasTopbar.setAttribute('aria-hidden', String(!isFullscreen));
-        canvasTopbar.classList.toggle('canvas-topbar--visible', isFullscreen);
+        canvasTopbar.setAttribute('aria-hidden', 'false');
+        canvasTopbar.dataset.fullscreen = String(isFullscreen);
     }
 
     fullscreenToggle.setAttribute('aria-pressed', String(isFullscreen));
@@ -527,35 +545,49 @@ function drawStroke(event) {
         event.preventDefault();
     }
 
-    const { x, y } = getCanvasCoordinates(event);
+    const coalesced = typeof event.getCoalescedEvents === 'function'
+        ? event.getCoalescedEvents()
+        : null;
 
-    if (drawMode === 'draw' && currentPath) {
-        currentPath.points.push([x, y]);
+    const pointerEvents = Array.isArray(coalesced) && coalesced.length > 0
+        ? coalesced
+        : [event];
 
-        ctx.beginPath();
-        ctx.moveTo(lastX, lastY);
-        ctx.lineTo(x, y);
-        ctx.strokeStyle = currentColor;
-        ctx.lineWidth = currentWidth;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
+    const batch = [];
 
-        sendDrawBatch([{
-            type: 'line',
-            startX: lastX,
-            startY: lastY,
-            endX: x,
-            endY: y,
-            width: currentWidth,
-            color: currentColor
-        }]);
-    } else if (drawMode === 'erase') {
-        checkErase(x, y);
+    pointerEvents.forEach((pointerEvent) => {
+        const { x, y } = getCanvasCoordinates(pointerEvent);
+
+        if (drawMode === 'draw' && currentPath) {
+            currentPath.points.push([x, y]);
+
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(x, y);
+            ctx.strokeStyle = currentColor;
+            ctx.lineWidth = currentWidth;
+            ctx.stroke();
+
+            batch.push({
+                type: 'line',
+                startX: lastX,
+                startY: lastY,
+                endX: x,
+                endY: y,
+                width: currentWidth,
+                color: currentColor
+            });
+        } else if (drawMode === 'erase') {
+            checkErase(x, y);
+        }
+
+        lastX = x;
+        lastY = y;
+    });
+
+    if (batch.length > 0) {
+        sendDrawBatch(batch);
     }
-
-    lastX = x;
-    lastY = y;
 }
 
 function stopDrawing(event) {
@@ -858,8 +890,8 @@ function distToSegment(x, y, x1, y1, x2, y2) {
 
 function getCanvasCoordinates(event) {
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    const scaleX = BASE_CANVAS_WIDTH / rect.width;
+    const scaleY = BASE_CANVAS_HEIGHT / rect.height;
 
     if (event.type.includes('touch')) {
         const touch = event.touches[0] || event.changedTouches[0];
@@ -938,6 +970,48 @@ function shouldIgnoreEvent(event) {
     }
 
     return false;
+}
+
+function lockViewportZoomForIOS() {
+    if (viewportZoomLocked) {
+        return;
+    }
+
+    const userAgent = navigator.userAgent || '';
+    const isIOS = /iPad|iPhone|iPod/.test(userAgent)
+        || (userAgent.includes('Mac') && 'ontouchend' in document);
+
+    if (!isIOS) {
+        return;
+    }
+
+    const blockMultiTouch = (event) => {
+        if (event.touches && event.touches.length > 1) {
+            event.preventDefault();
+        }
+    };
+
+    const blockGesture = (event) => {
+        event.preventDefault();
+    };
+
+    let lastTouchEnd = 0;
+    const blockDoubleTap = (event) => {
+        const now = Date.now();
+        if (now - lastTouchEnd <= 350) {
+            event.preventDefault();
+        }
+        lastTouchEnd = now;
+    };
+
+    document.addEventListener('gesturestart', blockGesture, { passive: false });
+    document.addEventListener('gesturechange', blockGesture, { passive: false });
+    document.addEventListener('gestureend', blockGesture, { passive: false });
+    document.addEventListener('touchstart', blockMultiTouch, { passive: false });
+    document.addEventListener('touchmove', blockMultiTouch, { passive: false });
+    document.addEventListener('touchend', blockDoubleTap, { passive: false });
+
+    viewportZoomLocked = true;
 }
 
 function clonePaths(source) {
