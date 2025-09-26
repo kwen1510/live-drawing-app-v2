@@ -135,9 +135,42 @@ body {
 html.canvas-fullscreen-active,
 body.canvas-fullscreen-active {
     overflow: hidden;
-    height: 100%;
+    height: 100dvh;
     touch-action: none;
     overscroll-behavior: none;
+}
+
+body.canvas-fullscreen-active .theme-toggle {
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.canvas-fullscreen-active .top-bar--student {
+    display: none;
+}
+
+body.canvas-fullscreen-active .page--student main {
+    padding: max(env(safe-area-inset-top), 0.75rem)
+             max(env(safe-area-inset-right), 0.75rem)
+             max(env(safe-area-inset-bottom), 0.75rem)
+             max(env(safe-area-inset-left), 0.75rem);
+    height: 100vh;
+    height: 100dvh;
+    min-height: 100vh;
+}
+
+body.canvas-fullscreen-active .student-layout {
+    height: 100%;
+    min-height: 0;
+}
+
+body.canvas-fullscreen-active .canvas-panel {
+    height: 100%;
+    min-height: 0;
+}
+
+body.canvas-fullscreen-active .page::before {
+    opacity: 0;
 }
 
 .page {
@@ -772,7 +805,7 @@ input[type="range"]::-moz-range-thumb {
 .canvas-panel {
     background: var(--surface);
     border-radius: 24px;
-    padding: clamp(1.5rem, 3vw, 2rem);
+    padding: clamp(1.25rem, 3vw, 2rem);
     box-shadow: var(--shadow-card);
     display: grid;
     gap: clamp(1rem, 2.5vw, 1.75rem);
@@ -1045,11 +1078,11 @@ input[type="range"]::-moz-range-thumb {
 .canvas-panel--fullscreen {
     border-radius: 0;
     box-shadow: none;
-    padding: clamp(1.5rem, 4vw, 3rem);
-    padding-top: max(clamp(1.5rem, 4vw, 3rem), env(safe-area-inset-top));
-    padding-right: max(clamp(1.5rem, 4vw, 3rem), env(safe-area-inset-right));
-    padding-bottom: max(clamp(1.5rem, 4vw, 3rem), env(safe-area-inset-bottom));
-    padding-left: max(clamp(1.5rem, 4vw, 3rem), env(safe-area-inset-left));
+    padding: clamp(1rem, 3vw, 2rem);
+    padding-top: max(clamp(1rem, 3vw, 2rem), env(safe-area-inset-top));
+    padding-right: max(clamp(1rem, 3vw, 2rem), env(safe-area-inset-right));
+    padding-bottom: max(clamp(1rem, 3vw, 2rem), env(safe-area-inset-bottom));
+    padding-left: max(clamp(1rem, 3vw, 2rem), env(safe-area-inset-left));
     touch-action: none;
     width: 100vw;
     height: 100vh;
@@ -1057,6 +1090,8 @@ input[type="range"]::-moz-range-thumb {
     max-height: 100vh;
     box-sizing: border-box;
     grid-template-rows: auto 1fr;
+    gap: clamp(0.75rem, 2vw, 1.2rem);
+    overflow: visible;
 }
 
 .canvas-panel:fullscreen .canvas-panel__layout,
@@ -1064,23 +1099,57 @@ input[type="range"]::-moz-range-thumb {
     height: 100%;
     display: flex;
     flex-direction: column;
+    min-height: 0;
 }
 
 .canvas-panel:fullscreen .canvas-toolbar,
 .canvas-panel--fullscreen .canvas-toolbar {
-    position: sticky;
-    top: max(clamp(1.5rem, 4vw, 3rem), env(safe-area-inset-top));
-    z-index: 5;
-    padding-right: clamp(3rem, 9vw, 5rem);
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: clamp(0.5rem, 1.6vw, 0.9rem);
+    padding: clamp(0.5rem, 1.6vw, 0.85rem) clamp(0.75rem, 2vw, 1.1rem);
+    scroll-padding-right: max(env(safe-area-inset-right), 0.75rem);
+    -webkit-overflow-scrolling: touch;
+}
+.canvas-panel:fullscreen .canvas-toolbar::-webkit-scrollbar,
+.canvas-panel--fullscreen .canvas-toolbar::-webkit-scrollbar {
+    display: none;
+}
+.canvas-panel:fullscreen .canvas-toolbar__group,
+.canvas-panel--fullscreen .canvas-toolbar__group {
+    flex-wrap: nowrap;
+}
+.canvas-panel:fullscreen .canvas-toolbar__spacer,
+.canvas-panel--fullscreen .canvas-toolbar__spacer {
+    flex: 0 0 clamp(0.5rem, 2vw, 1.1rem);
 }
 
 .canvas-panel:fullscreen .canvas-wrapper,
 .canvas-panel--fullscreen .canvas-wrapper {
     flex: 1 1 auto;
-    padding: clamp(1rem, 3vw, 2rem);
+    padding: clamp(0.75rem, 2.5vw, 1.5rem);
     min-height: 0;
     height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     overflow: hidden;
+}
+.canvas-panel:fullscreen .canvas-wrapper::after,
+.canvas-panel--fullscreen .canvas-wrapper::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+}
+.canvas-panel:fullscreen canvas,
+.canvas-panel--fullscreen canvas {
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 .canvas-panel:fullscreen #fullscreenToggle,

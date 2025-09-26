@@ -28,6 +28,8 @@ const fullscreenExitIcon = document.getElementById('fullscreenExitIcon');
 const fullscreenToggleLabel = document.getElementById('fullscreenToggleLabel');
 const ctx = canvas.getContext('2d');
 const rootElement = document.documentElement;
+const FULLSCREEN_FOCUS_MODE = 'focus';
+const FULLSCREEN_NATIVE_MODE = 'native';
 const BASE_CANVAS_WIDTH = 800;
 const BASE_CANVAS_HEIGHT = 600;
 const colorButtons = Array.from(document.querySelectorAll('.color-btn'));
@@ -53,8 +55,6 @@ ctx.fillStyle = '#ffffff';
 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
 let isDrawing = false;
-let lastX = 0;
-let lastY = 0;
 let drawMode = 'draw';
 let currentColor = '#1e1b4b';
 let currentWidth = 5;
@@ -70,6 +70,11 @@ let viewportZoomLocked = false;
 let fullscreenExitRequestedByButton = false;
 let reentryScheduled = false;
 let hasEverEnteredFullscreen = false;
+let smoothStrokePoints = [];
+let lastStrokeEndpoint = null;
+let lastStrokePoint = null;
+let focusModeActive = false;
+let fullscreenStrategy = determineFullscreenStrategy();
 
 const supabaseUrl = window.SUPABASE_URL;
 const supabaseAnonKey = window.SUPABASE_ANON_KEY;
@@ -390,10 +395,18 @@ function setupFullscreenControls() {
         document.addEventListener(eventName, updateFullscreenUI);
     });
 
+    document.addEventListener('keydown', handleFullscreenKeydown);
+
     updateFullscreenUI();
 }
 
 function toggleFullscreen() {
+    if (fullscreenStrategy === FULLSCREEN_FOCUS_MODE) {
+        focusModeActive = !focusModeActive;
+        updateFullscreenUI();
+        return;
+    }
+
     if (isCanvasFullscreen()) {
         fullscreenExitRequestedByButton = true;
         exitFullscreen();
@@ -404,6 +417,14 @@ function toggleFullscreen() {
 
 function enterFullscreen() {
     if (!canvasPanel) return;
+
+    if (fullscreenStrategy === FULLSCREEN_FOCUS_MODE) {
+        if (!focusModeActive) {
+            focusModeActive = true;
+            updateFullscreenUI();
+        }
+        return;
+    }
 
     const request = canvasPanel.requestFullscreen
         || canvasPanel.webkitRequestFullscreen
@@ -416,15 +437,27 @@ function enterFullscreen() {
             if (result && typeof result.then === 'function') {
                 result.catch((error) => {
                     console.error('Failed to enter fullscreen', error);
+                    fallbackToFocusMode();
                 });
             }
         } catch (error) {
             console.error('Failed to enter fullscreen', error);
+            fallbackToFocusMode();
         }
+    } else {
+        fallbackToFocusMode();
     }
 }
 
 function exitFullscreen() {
+    if (fullscreenStrategy === FULLSCREEN_FOCUS_MODE) {
+        if (focusModeActive) {
+            focusModeActive = false;
+            updateFullscreenUI();
+        }
+        return;
+    }
+
     const exit = document.exitFullscreen
         || document.webkitExitFullscreen
         || document.mozCancelFullScreen
@@ -443,6 +476,9 @@ function exitFullscreen() {
             console.error('Failed to exit fullscreen', error);
             fullscreenExitRequestedByButton = false;
         }
+    } else if (focusModeActive) {
+        focusModeActive = false;
+        updateFullscreenUI();
     }
 }
 
@@ -451,7 +487,10 @@ function updateFullscreenUI() {
         return;
     }
 
-    const isFullscreen = isCanvasFullscreen();
+    const nativeFullscreenActive = isCanvasFullscreen();
+    const isFullscreen = nativeFullscreenActive || focusModeActive;
+    const inFocusMode = focusModeActive && !nativeFullscreenActive;
+    const preferredLabel = inFocusMode || fullscreenStrategy === FULLSCREEN_FOCUS_MODE ? 'focus mode' : 'fullscreen';
 
     if (canvasPanel) {
         canvasPanel.classList.toggle('canvas-panel--fullscreen', isFullscreen);
@@ -470,11 +509,11 @@ function updateFullscreenUI() {
     }
 
     fullscreenToggle.setAttribute('aria-pressed', String(isFullscreen));
-    fullscreenToggle.setAttribute('aria-label', isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen');
-    fullscreenToggle.title = isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen';
+    fullscreenToggle.setAttribute('aria-label', isFullscreen ? `Exit ${preferredLabel}` : `Enter ${preferredLabel}`);
+    fullscreenToggle.title = isFullscreen ? `Exit ${preferredLabel}` : `Enter ${preferredLabel}`;
 
     if (fullscreenToggleLabel) {
-        fullscreenToggleLabel.textContent = isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen';
+        fullscreenToggleLabel.textContent = isFullscreen ? `Exit ${preferredLabel}` : `Enter ${preferredLabel}`;
     }
 
     if (fullscreenEnterIcon) {
@@ -485,17 +524,21 @@ function updateFullscreenUI() {
         fullscreenExitIcon.hidden = !isFullscreen;
     }
 
-    if (isFullscreen) {
+    if (nativeFullscreenActive) {
         hasEverEnteredFullscreen = true;
     } else {
-        if (hasEverEnteredFullscreen && !fullscreenExitRequestedByButton && canvasPanel && !reentryScheduled) {
-            reentryScheduled = true;
-            requestAnimationFrame(() => {
-                reentryScheduled = false;
-                enterFullscreen();
-            });
+        if (fullscreenStrategy === FULLSCREEN_NATIVE_MODE) {
+            if (hasEverEnteredFullscreen && !fullscreenExitRequestedByButton && canvasPanel && !reentryScheduled) {
+                reentryScheduled = true;
+                requestAnimationFrame(() => {
+                    reentryScheduled = false;
+                    enterFullscreen();
+                });
+            }
+            fullscreenExitRequestedByButton = false;
+        } else {
+            fullscreenExitRequestedByButton = false;
         }
-        fullscreenExitRequestedByButton = false;
     }
 }
 
@@ -506,6 +549,68 @@ function isCanvasFullscreen() {
         || document.msFullscreenElement;
 
     return fullscreenElement === canvasPanel;
+}
+
+function fallbackToFocusMode() {
+    fullscreenStrategy = FULLSCREEN_FOCUS_MODE;
+    if (!focusModeActive) {
+        focusModeActive = true;
+    }
+    fullscreenExitRequestedByButton = false;
+    updateFullscreenUI();
+}
+
+function handleFullscreenKeydown(event) {
+    if (!event) {
+        return;
+    }
+
+    if (event.key === 'Escape' && fullscreenStrategy === FULLSCREEN_FOCUS_MODE && focusModeActive) {
+        focusModeActive = false;
+        updateFullscreenUI();
+    }
+}
+
+function determineFullscreenStrategy() {
+    if (!canvasPanel) {
+        return FULLSCREEN_FOCUS_MODE;
+    }
+
+    if (isIOSDevice()) {
+        return FULLSCREEN_FOCUS_MODE;
+    }
+
+    if (!hasNativeFullscreenSupport()) {
+        return FULLSCREEN_FOCUS_MODE;
+    }
+
+    return FULLSCREEN_NATIVE_MODE;
+}
+
+function hasNativeFullscreenSupport() {
+    if (!canvasPanel) {
+        return false;
+    }
+
+    const request = canvasPanel.requestFullscreen
+        || canvasPanel.webkitRequestFullscreen
+        || canvasPanel.mozRequestFullScreen
+        || canvasPanel.msRequestFullscreen;
+
+    return typeof request === 'function';
+}
+
+function isIOSDevice() {
+    if (typeof navigator === 'undefined') {
+        return false;
+    }
+
+    const platform = navigator.platform || '';
+    const userAgent = navigator.userAgent || '';
+    const isAppleTouchDevice = /iP(ad|hone|od)/.test(userAgent);
+    const isMacWithTouch = platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+
+    return isAppleTouchDevice || isMacWithTouch;
 }
 
 function startDrawing(event) {
@@ -530,17 +635,20 @@ function startDrawing(event) {
         activePointerId = null;
     }
 
-    const { x, y } = getCanvasCoordinates(event);
+    const sample = createStrokeSample(event);
+    const { x, y } = sample;
     isDrawing = true;
-    lastX = x;
-    lastY = y;
 
     if (drawMode === 'draw') {
         currentPath = {
             color: currentColor,
             width: currentWidth,
-            points: [[x, y]]
+            points: [[x, y, sample.p]]
         };
+
+        smoothStrokePoints = [sample];
+        lastStrokeEndpoint = { x, y };
+        lastStrokePoint = sample;
 
         ctx.beginPath();
         ctx.arc(x, y, currentWidth / 2, 0, Math.PI * 2);
@@ -579,33 +687,23 @@ function drawStroke(event) {
     const batch = [];
 
     pointerEvents.forEach((pointerEvent) => {
-        const { x, y } = getCanvasCoordinates(pointerEvent);
-
         if (drawMode === 'draw' && currentPath) {
-            currentPath.points.push([x, y]);
+            const sample = createStrokeSample(pointerEvent);
+            currentPath.points.push([sample.x, sample.y, sample.p]);
+            smoothStrokePoints.push(sample);
 
-            ctx.beginPath();
-            ctx.moveTo(lastX, lastY);
-            ctx.lineTo(x, y);
-            ctx.strokeStyle = currentColor;
-            ctx.lineWidth = currentWidth;
-            ctx.stroke();
+            const { segments, remainingPoints } = drawSmoothSegments(smoothStrokePoints, currentColor, currentWidth);
+            smoothStrokePoints = remainingPoints;
 
-            batch.push({
-                type: 'line',
-                startX: lastX,
-                startY: lastY,
-                endX: x,
-                endY: y,
-                width: currentWidth,
-                color: currentColor
-            });
+            if (segments.length > 0) {
+                batch.push(...segments);
+            }
+
+            lastStrokePoint = sample;
         } else if (drawMode === 'erase') {
+            const { x, y } = getCanvasCoordinates(pointerEvent);
             checkErase(x, y);
         }
-
-        lastX = x;
-        lastY = y;
     });
 
     if (batch.length > 0) {
@@ -635,12 +733,60 @@ function stopDrawing(event) {
     isDrawing = false;
 
     if (drawMode === 'draw' && currentPath) {
+        const batch = [];
+
+        if (currentPath.points.length > 1 && lastStrokeEndpoint && lastStrokePoint) {
+            const finalWidth = computeSegmentWidth(lastStrokePoint.p, lastStrokePoint.p, currentPath.width);
+
+            ctx.beginPath();
+            ctx.moveTo(lastStrokeEndpoint.x, lastStrokeEndpoint.y);
+            ctx.quadraticCurveTo(lastStrokePoint.x, lastStrokePoint.y, lastStrokePoint.x, lastStrokePoint.y);
+            ctx.lineWidth = finalWidth;
+            ctx.strokeStyle = currentPath.color;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            batch.push({
+                type: 'quadratic',
+                startX: lastStrokeEndpoint.x,
+                startY: lastStrokeEndpoint.y,
+                controlX: lastStrokePoint.x,
+                controlY: lastStrokePoint.y,
+                endX: lastStrokePoint.x,
+                endY: lastStrokePoint.y,
+                width: finalWidth,
+                color: currentPath.color
+            });
+
+            const radius = Math.max(currentPath.width / 2, finalWidth / 2, currentPath.width * 0.2);
+            ctx.beginPath();
+            ctx.arc(lastStrokePoint.x, lastStrokePoint.y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = currentPath.color;
+            ctx.fill();
+
+            batch.push({
+                type: 'dot',
+                x: lastStrokePoint.x,
+                y: lastStrokePoint.y,
+                radius,
+                color: currentPath.color
+            });
+        }
+
+        if (batch.length > 0) {
+            sendDrawBatch(batch);
+        }
+
         paths.push(currentPath);
         currentPath = null;
         pushHistory();
         broadcastCanvas('update');
     }
 
+    smoothStrokePoints = [];
+    lastStrokeEndpoint = null;
+    lastStrokePoint = null;
     activePointerId = null;
 }
 
@@ -726,25 +872,204 @@ function redrawCanvas() {
 
 function renderAllPaths() {
     paths.forEach((path) => {
-        if (path.points.length === 1) {
-            const [x, y] = path.points[0];
-            ctx.beginPath();
-            ctx.arc(x, y, path.width / 2, 0, Math.PI * 2);
-            ctx.fillStyle = path.color;
-            ctx.fill();
-        } else {
-            ctx.beginPath();
-            ctx.moveTo(path.points[0][0], path.points[0][1]);
-            for (let i = 1; i < path.points.length; i += 1) {
-                ctx.lineTo(path.points[i][0], path.points[i][1]);
-            }
-            ctx.strokeStyle = path.color;
-            ctx.lineWidth = path.width;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.stroke();
-        }
+        renderSmoothPath(ctx, path);
     });
+}
+
+function renderSmoothPath(context, path) {
+    if (!path || !Array.isArray(path.points) || path.points.length === 0) {
+        return;
+    }
+
+    const points = normalisePathPoints(path.points);
+    if (points.length === 0) {
+        return;
+    }
+
+    if (points.length === 1) {
+        const [point] = points;
+        const radius = Math.max(path.width / 2, 0.5);
+        context.beginPath();
+        context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        context.fillStyle = path.color;
+        context.fill();
+        return;
+    }
+
+    let startPoint = { x: points[0].x, y: points[0].y };
+    let previous = points[0];
+
+    for (let i = 1; i < points.length; i += 1) {
+        const current = points[i];
+        const midpoint = getMidpoint(previous, current);
+        const width = computeSegmentWidth(previous.p, current.p, path.width);
+
+        context.beginPath();
+        context.moveTo(startPoint.x, startPoint.y);
+        context.quadraticCurveTo(previous.x, previous.y, midpoint.x, midpoint.y);
+        context.lineWidth = width;
+        context.strokeStyle = path.color;
+        context.lineCap = 'round';
+        context.lineJoin = 'round';
+        context.stroke();
+
+        startPoint = midpoint;
+        previous = current;
+    }
+
+    const lastPoint = points[points.length - 1];
+    const finalWidth = computeSegmentWidth(lastPoint.p, lastPoint.p, path.width);
+    const radius = Math.max(path.width / 2, finalWidth / 2, path.width * 0.2);
+    context.beginPath();
+    context.arc(lastPoint.x, lastPoint.y, radius, 0, Math.PI * 2);
+    context.fillStyle = path.color;
+    context.fill();
+}
+
+function drawSmoothSegments(pointsBuffer, color, baseWidth) {
+    const segments = [];
+
+    if (!Array.isArray(pointsBuffer) || pointsBuffer.length < 2) {
+        return { segments, remainingPoints: pointsBuffer };
+    }
+
+    let startPoint = lastStrokeEndpoint
+        ? { x: lastStrokeEndpoint.x, y: lastStrokeEndpoint.y }
+        : { x: pointsBuffer[0].x, y: pointsBuffer[0].y };
+    let previous = pointsBuffer[0];
+
+    for (let i = 1; i < pointsBuffer.length; i += 1) {
+        const current = pointsBuffer[i];
+        const midpoint = getMidpoint(previous, current);
+        const width = computeSegmentWidth(previous.p, current.p, baseWidth);
+
+        ctx.beginPath();
+        ctx.moveTo(startPoint.x, startPoint.y);
+        ctx.quadraticCurveTo(previous.x, previous.y, midpoint.x, midpoint.y);
+        ctx.lineWidth = width;
+        ctx.strokeStyle = color;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        segments.push({
+            type: 'quadratic',
+            startX: startPoint.x,
+            startY: startPoint.y,
+            controlX: previous.x,
+            controlY: previous.y,
+            endX: midpoint.x,
+            endY: midpoint.y,
+            width,
+            color
+        });
+
+        startPoint = midpoint;
+        previous = current;
+    }
+
+    lastStrokeEndpoint = startPoint;
+
+    return {
+        segments,
+        remainingPoints: pointsBuffer.slice(-1)
+    };
+}
+
+function normalisePathPoints(rawPoints) {
+    return rawPoints.reduce((accumulator, point) => {
+        if (!point) {
+            return accumulator;
+        }
+
+        if (Array.isArray(point)) {
+            const [x, y, pressure] = point;
+            if (typeof x === 'number' && typeof y === 'number') {
+                accumulator.push({
+                    x,
+                    y,
+                    p: typeof pressure === 'number' ? clamp(pressure, 0.05, 1) : 0.5
+                });
+            }
+            return accumulator;
+        }
+
+        if (typeof point === 'object') {
+            const { x, y } = point;
+            if (typeof x === 'number' && typeof y === 'number') {
+                const pressure = typeof point.p === 'number'
+                    ? point.p
+                    : (typeof point.pressure === 'number' ? point.pressure : 0.5);
+                accumulator.push({
+                    x,
+                    y,
+                    p: clamp(pressure, 0.05, 1)
+                });
+            }
+        }
+
+        return accumulator;
+    }, []);
+}
+
+function getMidpoint(a, b) {
+    return {
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2
+    };
+}
+
+function computeSegmentWidth(pressureA, pressureB, baseWidth) {
+    const base = typeof baseWidth === 'number' && baseWidth > 0 ? baseWidth : 1.6;
+    const average = ((pressureA || 0.5) + (pressureB || 0.5)) / 2;
+    const minWidth = base * 0.35;
+    const maxWidth = base * 1.6;
+    const width = base * (average + 0.05);
+    return clamp(width, Math.max(0.75, minWidth), Math.max(minWidth, maxWidth));
+}
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function createStrokeSample(event) {
+    const { x, y } = getCanvasCoordinates(event);
+    return {
+        x,
+        y,
+        p: getEventPressure(event)
+    };
+}
+
+function getEventPressure(event) {
+    if (typeof event?.pressure === 'number' && event.pressure > 0) {
+        return clamp(event.pressure, 0.05, 1);
+    }
+
+    const touch = (event?.touches && event.touches[0])
+        || (event?.changedTouches && event.changedTouches[0]);
+
+    if (touch && typeof touch.force === 'number' && touch.force > 0) {
+        return clamp(touch.force, 0.05, 1);
+    }
+
+    return 0.5;
+}
+
+function getPointCoordinates(point) {
+    if (Array.isArray(point)) {
+        return {
+            x: point[0],
+            y: point[1]
+        };
+    }
+
+    if (point && typeof point === 'object') {
+        const { x, y } = point;
+        return { x, y };
+    }
+
+    return { x: undefined, y: undefined };
 }
 
 function drawBackgroundImage(image) {
@@ -848,8 +1173,9 @@ function checkErase(x, y) {
         }
 
         if (path.points.length === 1) {
-            const [pointX, pointY] = path.points[0];
-            if (distToSegment(x, y, pointX, pointY, pointX, pointY) <= eraseRadius) {
+            const { x: pointX, y: pointY } = getPointCoordinates(path.points[0]);
+            if (typeof pointX === 'number' && typeof pointY === 'number'
+                && distToSegment(x, y, pointX, pointY, pointX, pointY) <= eraseRadius) {
                 paths.splice(i, 1);
                 erased = true;
             }
@@ -857,8 +1183,12 @@ function checkErase(x, y) {
         }
 
         for (let j = 1; j < path.points.length; j += 1) {
-            const [x1, y1] = path.points[j - 1];
-            const [x2, y2] = path.points[j];
+            const { x: x1, y: y1 } = getPointCoordinates(path.points[j - 1]);
+            const { x: x2, y: y2 } = getPointCoordinates(path.points[j]);
+
+            if (typeof x1 !== 'number' || typeof y1 !== 'number' || typeof x2 !== 'number' || typeof y2 !== 'number') {
+                continue;
+            }
 
             if (distToSegment(x, y, x1, y1, x2, y2) <= eraseRadius) {
                 paths.splice(i, 1);
