@@ -1,36 +1,50 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Live Drawing Tool - Student Workspace</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <script src="/config.js"></script>
+    <script type="module" src="js/theme-toggle.js" defer></script>
     <script type="module" src="js/student.js" defer></script>
 </head>
 <body class="student-shell">
-    <div class="student-shell__wrap">
-        <header class="student-topbar">
-            <div class="student-topbar__left">
-                <span class="student-topbar__title" id="welcomeHeading">Student canvas</span>
-                <button id="clearCanvasButton" class="student-topbar__button" type="button">Clear</button>
+    <div class="student-shell__wrap canvas-panel" id="canvasPanel">
+        <nav id="canvasToolbar" class="student-toolbar canvas-toolbar canvas-toolbar--compact" role="toolbar" aria-label="Drawing controls">
+            <span id="sessionStatus" class="student-toolbar__status status-badge status-badge--pending" role="status" aria-live="polite">Connecting...</span>
+            <span class="student-toolbar__code" aria-live="polite">
+                <span class="student-toolbar__label">Session</span>
+                <strong id="sessionCodeDisplay">&mdash;&mdash;&mdash;&mdash;</strong>
+            </span>
+            <span class="student-toolbar__divider" aria-hidden="true"></span>
+            <button class="quick-action-btn" type="button" data-action="undo" aria-label="Undo" title="Undo">Undo</button>
+            <button class="quick-action-btn" type="button" data-action="redo" aria-label="Redo" title="Redo">Redo</button>
+            <button class="quick-action-btn quick-action-btn--danger" type="button" data-action="clear" aria-label="Clear canvas" title="Clear canvas">Clear</button>
+            <span class="student-toolbar__divider" aria-hidden="true"></span>
+            <div class="student-toolbar__colors" role="group" aria-label="Pen color">
+                <button class="color-btn color-btn--swatch black" type="button" data-color="#1e1b4b" aria-label="Dark ink"></button>
+                <button class="color-btn color-btn--swatch blue" type="button" data-color="#2563eb" aria-label="Blue"></button>
+                <button class="color-btn color-btn--swatch red" type="button" data-color="#f43f5e" aria-label="Red"></button>
+                <button class="color-btn color-btn--swatch green" type="button" data-color="#10b981" aria-label="Green"></button>
             </div>
-            <div class="student-topbar__right">
-                <span class="student-topbar__session">Session <strong id="sessionCodeDisplay">&mdash;&mdash;&mdash;&mdash;</strong></span>
-                <span class="student-topbar__status student-topbar__status--pending" id="connectionStatus" role="status" aria-live="polite">
-                    <span class="status-indicator status-indicator--pending" id="connectionIndicator" aria-hidden="true"></span>
-                    <span id="connectionLabel">Connecting...</span>
-                </span>
+            <div class="student-toolbar__tools" role="group" aria-label="Pen or eraser">
+                <button class="tool-btn" type="button" data-tool="draw" aria-pressed="true">Pen</button>
+                <button class="tool-btn" type="button" data-tool="erase" aria-pressed="false">Eraser</button>
             </div>
-        </header>
-        <main class="student-canvas" aria-label="Drawing surface">
-            <div class="student-canvas__surface">
-                <canvas id="drawingCanvas" aria-label="Drawing canvas"></canvas>
-            </div>
-        </main>
+            <label class="slider-field slider-field--inline student-toolbar__slider">
+                <span class="visually-hidden">Pen size</span>
+                <input type="range" data-brush-size min="1" max="20" value="5" aria-label="Pen size">
+            </label>
+            <button class="toggle-btn toggle-btn--compact" type="button" data-stylus-toggle aria-pressed="true">Stylus</button>
+            <button id="fullscreenToggle" class="icon-btn" type="button" aria-pressed="false" aria-label="Enter fullscreen" title="Enter fullscreen">⛶</button>
+        </nav>
+        <div class="student-canvas canvas-wrapper" id="canvasWrapper">
+            <canvas id="drawingCanvas" aria-label="Drawing canvas"></canvas>
+        </div>
     </div>
 </body>
 </html>
