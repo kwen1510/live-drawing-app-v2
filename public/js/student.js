@@ -66,7 +66,8 @@ const drawingState = {
 const eraserState = {
     isErasing: false,
     pointerId: null,
-    lastPoint: null
+    lastPoint: null,
+    currentAction: null
 };
 
 const canvasSize = {
@@ -312,6 +313,30 @@ function updateHistoryButtons() {
     }
 }
 
+function normaliseEraseEntries(action) {
+    if (!action) {
+        return [];
+    }
+
+    if (Array.isArray(action.entries)) {
+        return action.entries
+            .filter((entry) => entry && entry.path)
+            .map((entry) => ({
+                path: entry.path,
+                index: typeof entry.index === 'number' ? entry.index : storedPaths.length
+            }));
+    }
+
+    if (action.path) {
+        return [{
+            path: action.path,
+            index: typeof action.index === 'number' ? action.index : storedPaths.length
+        }];
+    }
+
+    return [];
+}
+
 function undoLastAction() {
     if (historyActions.length === 0) {
         return;
@@ -332,10 +357,18 @@ function undoLastAction() {
             redoActions.push({ type: 'draw', path: removed });
         }
     } else if (action.type === 'erase') {
-        if (action.path) {
-            const insertIndex = clamp(action.index, 0, storedPaths.length);
-            storedPaths.splice(insertIndex, 0, action.path);
-            redoActions.push({ type: 'erase', path: action.path, index: insertIndex });
+        const entries = normaliseEraseEntries(action);
+        if (entries.length > 0) {
+            for (let i = entries.length - 1; i >= 0; i -= 1) {
+                const entry = entries[i];
+                const insertIndex = clamp(entry.index, 0, storedPaths.length);
+                storedPaths.splice(insertIndex, 0, entry.path);
+            }
+
+            redoActions.push({
+                type: 'erase',
+                entries: entries.map((entry) => ({ path: entry.path, index: entry.index }))
+            });
         }
     }
 
@@ -357,17 +390,30 @@ function redoLastAction() {
             historyActions.push({ type: 'draw', path: action.path });
         }
     } else if (action.type === 'erase') {
-        const targetIndex = storedPaths.indexOf(action.path);
-        if (targetIndex !== -1) {
-            const [removed] = storedPaths.splice(targetIndex, 1);
-            if (removed) {
-                historyActions.push({ type: 'erase', path: removed, index: targetIndex });
+        const entries = normaliseEraseEntries(action);
+        const performed = [];
+
+        entries.forEach((entry) => {
+            if (!entry.path) {
+                return;
             }
-        } else if (typeof action.index === 'number' && action.index >= 0 && action.index < storedPaths.length) {
-            const [removed] = storedPaths.splice(action.index, 1);
-            if (removed) {
-                historyActions.push({ type: 'erase', path: removed, index: action.index });
+
+            const targetIndex = storedPaths.indexOf(entry.path);
+            if (targetIndex !== -1) {
+                const [removed] = storedPaths.splice(targetIndex, 1);
+                if (removed) {
+                    performed.push({ path: removed, index: targetIndex });
+                }
+            } else if (typeof entry.index === 'number' && entry.index >= 0 && entry.index < storedPaths.length) {
+                const [removed] = storedPaths.splice(entry.index, 1);
+                if (removed) {
+                    performed.push({ path: removed, index: entry.index });
+                }
             }
+        });
+
+        if (performed.length > 0) {
+            historyActions.push({ type: 'erase', entries: performed });
         }
     }
 
@@ -644,10 +690,15 @@ function eraseStrokeAtPoint(point) {
         return;
     }
 
-    historyActions.push({ type: 'erase', path: removed, index: strokeIndex });
+    if (eraserState.currentAction && Array.isArray(eraserState.currentAction.entries)) {
+        eraserState.currentAction.entries.push({ path: removed, index: strokeIndex });
+    } else {
+        historyActions.push({ type: 'erase', entries: [{ path: removed, index: strokeIndex }] });
+        updateHistoryButtons();
+    }
+
     redoActions = [];
     redrawCanvas();
-    updateHistoryButtons();
     broadcastCanvas('update');
 }
 
@@ -662,6 +713,7 @@ function startErasing(event) {
 
     eraserState.isErasing = true;
     eraserState.pointerId = typeof event.pointerId === 'number' ? event.pointerId : null;
+    eraserState.currentAction = { type: 'erase', entries: [] };
     const point = getCanvasPoint(event);
     eraserState.lastPoint = point;
     eraseStrokeAtPoint(point);
@@ -710,6 +762,7 @@ function finishErasing(event) {
         eraseStrokeAtPoint(eraserState.lastPoint);
     }
 
+    finalizeEraseAction();
     resetEraserState();
 }
 
@@ -730,6 +783,7 @@ function cancelErasing(event) {
         }
     }
 
+    finalizeEraseAction();
     resetEraserState();
 }
 
@@ -737,6 +791,22 @@ function resetEraserState() {
     eraserState.isErasing = false;
     eraserState.pointerId = null;
     eraserState.lastPoint = null;
+    eraserState.currentAction = null;
+}
+
+function finalizeEraseAction() {
+    const current = eraserState.currentAction;
+    if (!current || !Array.isArray(current.entries) || current.entries.length === 0) {
+        return;
+    }
+
+    const entries = current.entries.filter((entry) => entry && entry.path);
+    if (entries.length === 0) {
+        return;
+    }
+
+    historyActions.push({ type: 'erase', entries });
+    updateHistoryButtons();
 }
 
 function eraseAlongPath(startPoint, endPoint) {

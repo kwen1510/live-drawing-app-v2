@@ -92,9 +92,35 @@
             <div class="panel-heading">
                 <h2>Student canvases</h2>
                 <p class="panel-subtitle">Cards appear the moment a student joins your session.</p>
+                <div class="student-grid-controls">
+                    <label class="student-grid-controls__label" for="gridColumnsSelect">Cards per row</label>
+                    <select id="gridColumnsSelect" class="student-grid-controls__select">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3" selected>3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                </div>
             </div>
             <div class="student-grid" id="studentGrid"></div>
         </section>
     </main>
+
+    <div id="studentModal" class="student-modal" hidden aria-hidden="true">
+        <div class="student-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="studentModalTitle">
+            <button id="studentModalClose" class="student-modal__close" type="button" aria-label="Close student preview">
+                <span aria-hidden="true">&times;</span>
+            </button>
+            <header class="student-modal__header">
+                <h2 id="studentModalTitle">Student canvas</h2>
+                <p id="studentModalSubtitle" class="student-modal__meta"></p>
+            </header>
+            <div class="student-modal__canvas">
+                <canvas id="studentModalCanvas" width="1024" height="768"></canvas>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
