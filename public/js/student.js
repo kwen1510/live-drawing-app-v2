@@ -63,6 +63,12 @@ const drawingState = {
     currentStroke: null
 };
 
+const eraserState = {
+    isErasing: false,
+    pointerId: null,
+    lastPoint: null
+};
+
 const canvasSize = {
     width: 1,
     height: 1
@@ -493,13 +499,12 @@ function handlePointerDown(event) {
         return;
     }
 
+    event.preventDefault();
+
     if (toolState.tool === TOOL_TYPES.ERASER) {
-        event.preventDefault();
-        eraseStrokeAtPoint(getCanvasPoint(event));
+        startErasing(event);
         return;
     }
-
-    event.preventDefault();
 
     if (typeof event.pointerId === 'number' && typeof canvas.setPointerCapture === 'function') {
         try {
@@ -520,11 +525,16 @@ function handlePointerDown(event) {
 }
 
 function handlePointerMove(event) {
-    if (!canvas || !ctx || !drawingState.isDrawing) {
+    if (!canvas || !ctx) {
         return;
     }
 
     if (toolState.tool === TOOL_TYPES.ERASER) {
+        handleEraserMove(event);
+        return;
+    }
+
+    if (!drawingState.isDrawing) {
         return;
     }
 
@@ -541,11 +551,16 @@ function handlePointerMove(event) {
 }
 
 function handlePointerUp(event) {
-    if (!canvas || !ctx || !drawingState.isDrawing) {
+    if (!canvas || !ctx) {
         return;
     }
 
     if (toolState.tool === TOOL_TYPES.ERASER) {
+        finishErasing(event);
+        return;
+    }
+
+    if (!drawingState.isDrawing) {
         return;
     }
 
@@ -572,7 +587,16 @@ function handlePointerUp(event) {
 }
 
 function handlePointerCancel(event) {
-    if (!drawingState.isDrawing || toolState.tool === TOOL_TYPES.ERASER) {
+    if (!canvas || !ctx) {
+        return;
+    }
+
+    if (toolState.tool === TOOL_TYPES.ERASER) {
+        cancelErasing(event);
+        return;
+    }
+
+    if (!drawingState.isDrawing) {
         return;
     }
 
@@ -625,6 +649,118 @@ function eraseStrokeAtPoint(point) {
     redrawCanvas();
     updateHistoryButtons();
     broadcastCanvas('update');
+}
+
+function startErasing(event) {
+    if (typeof event.pointerId === 'number' && typeof canvas.setPointerCapture === 'function') {
+        try {
+            canvas.setPointerCapture(event.pointerId);
+        } catch (error) {
+            console.warn('Failed to capture pointer for eraser', error);
+        }
+    }
+
+    eraserState.isErasing = true;
+    eraserState.pointerId = typeof event.pointerId === 'number' ? event.pointerId : null;
+    const point = getCanvasPoint(event);
+    eraserState.lastPoint = point;
+    eraseStrokeAtPoint(point);
+}
+
+function handleEraserMove(event) {
+    if (!eraserState.isErasing) {
+        return;
+    }
+
+    if (typeof event.pointerId === 'number' && eraserState.pointerId !== null && event.pointerId !== eraserState.pointerId) {
+        return;
+    }
+
+    if (!isSupportedPointer(event)) {
+        return;
+    }
+
+    event.preventDefault();
+
+    const point = getCanvasPoint(event);
+    eraseAlongPath(eraserState.lastPoint, point);
+    eraserState.lastPoint = point;
+}
+
+function finishErasing(event) {
+    if (!eraserState.isErasing) {
+        return;
+    }
+
+    if (typeof event.pointerId === 'number' && eraserState.pointerId !== null && event.pointerId !== eraserState.pointerId) {
+        return;
+    }
+
+    event.preventDefault();
+
+    if (typeof event.pointerId === 'number' && typeof canvas.releasePointerCapture === 'function') {
+        try {
+            canvas.releasePointerCapture(event.pointerId);
+        } catch (error) {
+            console.warn('Failed to release pointer for eraser', error);
+        }
+    }
+
+    if (eraserState.lastPoint) {
+        eraseStrokeAtPoint(eraserState.lastPoint);
+    }
+
+    resetEraserState();
+}
+
+function cancelErasing(event) {
+    if (!eraserState.isErasing) {
+        return;
+    }
+
+    if (event?.preventDefault) {
+        event.preventDefault();
+    }
+
+    if (typeof event?.pointerId === 'number' && typeof canvas.releasePointerCapture === 'function') {
+        try {
+            canvas.releasePointerCapture(event.pointerId);
+        } catch (error) {
+            console.warn('Failed to release pointer for eraser cancel', error);
+        }
+    }
+
+    resetEraserState();
+}
+
+function resetEraserState() {
+    eraserState.isErasing = false;
+    eraserState.pointerId = null;
+    eraserState.lastPoint = null;
+}
+
+function eraseAlongPath(startPoint, endPoint) {
+    if (!endPoint) {
+        return;
+    }
+
+    if (!startPoint) {
+        eraseStrokeAtPoint(endPoint);
+        return;
+    }
+
+    const distance = distanceBetweenPoints(startPoint, endPoint);
+    const stepSize = Math.max(ERASER_BASE_WIDTH * 0.45, 6);
+    const steps = Math.max(1, Math.ceil(distance / stepSize));
+
+    for (let i = 1; i <= steps; i += 1) {
+        const t = i / steps;
+        eraseStrokeAtPoint({
+            x: startPoint.x + (endPoint.x - startPoint.x) * t,
+            y: startPoint.y + (endPoint.y - startPoint.y) * t,
+            p: endPoint.p
+        });
+    }
 }
 
 function findStrokeIndexAtPoint(point) {
