@@ -49,32 +49,47 @@
                     <h2 class="canvas-panel__title">Creative canvas</h2>
                     <p class="canvas-panel__subtitle">Go full screen for focus mode and extra drawing space.</p>
                 </div>
-                <button id="fullscreenToggle" class="canvas-panel__action-btn" type="button" aria-pressed="false">
-                    <svg id="fullscreenEnterIcon" class="canvas-panel__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <polyline points="5 9 5 5 9 5"></polyline>
-                        <line x1="5" y1="5" x2="10" y2="10"></line>
-                        <polyline points="19 15 19 19 15 19"></polyline>
-                        <line x1="19" y1="19" x2="14" y2="14"></line>
-                        <polyline points="15 5 19 5 19 9"></polyline>
-                        <line x1="19" y1="5" x2="14" y2="10"></line>
-                        <polyline points="9 19 5 19 5 15"></polyline>
-                        <line x1="5" y1="19" x2="10" y2="14"></line>
-                    </svg>
-                    <svg id="fullscreenExitIcon" class="canvas-panel__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
-                        <polyline points="9 9 5 9 5 5"></polyline>
-                        <line x1="5" y1="5" x2="10" y2="10"></line>
-                        <polyline points="15 15 19 15 19 19"></polyline>
-                        <line x1="19" y1="19" x2="14" y2="14"></line>
-                        <polyline points="15 9 19 9 19 5"></polyline>
-                        <line x1="19" y1="5" x2="14" y2="10"></line>
-                        <polyline points="9 15 5 15 5 19"></polyline>
-                        <line x1="5" y1="19" x2="10" y2="14"></line>
-                    </svg>
-                    <span id="fullscreenToggleLabel" class="canvas-panel__action-label">Enter fullscreen</span>
-                </button>
+                <div class="canvas-panel__toolbar-actions">
+                    <button id="fullscreenToggle" class="canvas-panel__action-btn" type="button" aria-pressed="false" aria-label="Enter fullscreen" title="Enter fullscreen">
+                        <svg id="fullscreenEnterIcon" class="canvas-panel__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="5 9 5 5 9 5"></polyline>
+                            <polyline points="19 15 19 19 15 19"></polyline>
+                            <polyline points="15 5 19 5 19 9"></polyline>
+                            <polyline points="9 19 5 19 5 15"></polyline>
+                        </svg>
+                        <svg id="fullscreenExitIcon" class="canvas-panel__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+                            <polyline points="9 5 5 5 5 9"></polyline>
+                            <polyline points="15 19 19 19 19 15"></polyline>
+                            <polyline points="19 9 19 5 15 5"></polyline>
+                            <polyline points="5 15 5 19 9 19"></polyline>
+                        </svg>
+                        <span id="fullscreenToggleLabel" class="visually-hidden">Enter fullscreen</span>
+                    </button>
+                </div>
             </div>
             <div class="canvas-wrapper" id="canvasWrapper">
                 <canvas id="drawingCanvas"></canvas>
+                <div class="canvas-panel__quick-actions" role="group" aria-label="Canvas actions">
+                    <button id="undoBtn" class="quick-action-btn" type="button" aria-label="Undo" title="Undo">
+                        <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="9 15 3 9 9 3"></polyline>
+                            <path d="M3 9h10a5 5 0 0 1 0 10h-3"></path>
+                        </svg>
+                    </button>
+                    <button id="redoBtn" class="quick-action-btn" type="button" aria-label="Redo" title="Redo">
+                        <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="15 3 21 9 15 15"></polyline>
+                            <path d="M21 9H11a5 5 0 0 0 0 10h3"></path>
+                        </svg>
+                    </button>
+                    <button id="clearBtn" class="quick-action-btn quick-action-btn--danger" type="button" aria-label="Clear canvas" title="Clear canvas">
+                        <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M3 6h18"></path>
+                            <path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"></path>
+                            <path d="M10 6l1-3h2l1 3"></path>
+                        </svg>
+                    </button>
+                </div>
             </div>
             <div class="canvas-panel__color-rail" role="group" aria-label="Quick color markers">
                 <button class="color-btn black active" data-color="#1e1b4b" aria-label="Black"></button>
@@ -106,8 +121,20 @@
             <div class="control-group">
                 <h2>Mode</h2>
                 <div class="mode-buttons">
-                    <button id="drawBtn" class="tool-btn active" type="button">Draw</button>
-                    <button id="eraseBtn" class="tool-btn" type="button">Erase</button>
+                    <button id="drawBtn" class="tool-btn active" type="button">
+                        <svg class="tool-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M3 17.25V21h3.75L19.81 7.94a1.06 1.06 0 0 0 0-1.5l-2.25-2.25a1.06 1.06 0 0 0-1.5 0L3 17.25z" fill="currentColor"></path>
+                            <path d="M14.75 6.04l3.21 3.21"></path>
+                        </svg>
+                        <span class="tool-btn__label">Brush</span>
+                    </button>
+                    <button id="eraseBtn" class="tool-btn" type="button">
+                        <svg class="tool-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M3.5 16.5 13.5 6.5a2 2 0 0 1 2.83 0l4.17 4.17a2 2 0 0 1 0 2.83l-6.5 6.5H3.5z" fill="currentColor"></path>
+                            <path d="M6 19.5h7"></path>
+                        </svg>
+                        <span class="tool-btn__label">Eraser</span>
+                    </button>
                 </div>
             </div>
 
@@ -118,15 +145,6 @@
                     <span id="stylusModeStatus" class="toggle-btn__status">Off</span>
                 </button>
                 <p class="control-hint">Ignore accidental finger touches while drawing with a stylus.</p>
-            </div>
-
-            <div class="control-group">
-                <h2>Actions</h2>
-                <div class="action-buttons">
-                    <button id="undoBtn" class="ghost-btn" type="button">Undo</button>
-                    <button id="redoBtn" class="ghost-btn" type="button">Redo</button>
-                    <button id="clearBtn" class="ghost-btn ghost-btn--danger" type="button">Clear</button>
-                </div>
             </div>
 
             <div class="control-note">
