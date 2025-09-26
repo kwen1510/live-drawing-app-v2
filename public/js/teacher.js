@@ -130,6 +130,15 @@ function wireChannelEvents() {
                 ctx.arc(data.x, data.y, data.radius, 0, Math.PI * 2);
                 ctx.fillStyle = data.color;
                 ctx.fill();
+            } else if (data.type === 'quadratic') {
+                ctx.beginPath();
+                ctx.moveTo(data.startX, data.startY);
+                ctx.quadraticCurveTo(data.controlX, data.controlY, data.endX, data.endY);
+                ctx.strokeStyle = data.color;
+                ctx.lineWidth = data.width;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
             }
         });
 
@@ -585,29 +594,114 @@ function drawStudentCanvas(student) {
 
 function renderStudentPaths(ctx, paths) {
     paths.forEach((path) => {
-        if (!Array.isArray(path.points) || path.points.length === 0) {
-            return;
+        drawSmoothStudentPath(ctx, path);
+    });
+}
+
+function drawSmoothStudentPath(ctx, path) {
+    if (!path || !Array.isArray(path.points) || path.points.length === 0) {
+        return;
+    }
+
+    const points = normaliseStudentPoints(path.points);
+    if (points.length === 0) {
+        return;
+    }
+
+    if (points.length === 1) {
+        const [point] = points;
+        const radius = Math.max(path.width / 2, 0.5);
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = path.color;
+        ctx.fill();
+        return;
+    }
+
+    let startPoint = { x: points[0].x, y: points[0].y };
+    let previous = points[0];
+
+    for (let i = 1; i < points.length; i += 1) {
+        const current = points[i];
+        const midpoint = getStudentMidpoint(previous, current);
+        const width = computeStudentSegmentWidth(previous.p, current.p, path.width);
+
+        ctx.beginPath();
+        ctx.moveTo(startPoint.x, startPoint.y);
+        ctx.quadraticCurveTo(previous.x, previous.y, midpoint.x, midpoint.y);
+        ctx.lineWidth = width;
+        ctx.strokeStyle = path.color;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        startPoint = midpoint;
+        previous = current;
+    }
+
+    const lastPoint = points[points.length - 1];
+    const finalWidth = computeStudentSegmentWidth(lastPoint.p, lastPoint.p, path.width);
+    const radius = Math.max(path.width / 2, finalWidth / 2, path.width * 0.2);
+    ctx.beginPath();
+    ctx.arc(lastPoint.x, lastPoint.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = path.color;
+    ctx.fill();
+}
+
+function normaliseStudentPoints(rawPoints) {
+    return rawPoints.reduce((accumulator, point) => {
+        if (!point) {
+            return accumulator;
         }
 
-        if (path.points.length === 1) {
-            const [x, y] = path.points[0];
-            ctx.beginPath();
-            ctx.arc(x, y, path.width / 2, 0, Math.PI * 2);
-            ctx.fillStyle = path.color;
-            ctx.fill();
-        } else {
-            ctx.beginPath();
-            ctx.moveTo(path.points[0][0], path.points[0][1]);
-            for (let i = 1; i < path.points.length; i += 1) {
-                ctx.lineTo(path.points[i][0], path.points[i][1]);
+        if (Array.isArray(point)) {
+            const [x, y, pressure] = point;
+            if (typeof x === 'number' && typeof y === 'number') {
+                accumulator.push({
+                    x,
+                    y,
+                    p: typeof pressure === 'number' ? studentClamp(pressure, 0.05, 1) : 0.5
+                });
             }
-            ctx.strokeStyle = path.color;
-            ctx.lineWidth = path.width;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.stroke();
+            return accumulator;
         }
-    });
+
+        if (typeof point === 'object') {
+            const { x, y } = point;
+            if (typeof x === 'number' && typeof y === 'number') {
+                const pressure = typeof point.p === 'number'
+                    ? point.p
+                    : (typeof point.pressure === 'number' ? point.pressure : 0.5);
+                accumulator.push({
+                    x,
+                    y,
+                    p: studentClamp(pressure, 0.05, 1)
+                });
+            }
+        }
+
+        return accumulator;
+    }, []);
+}
+
+function getStudentMidpoint(a, b) {
+    return {
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2
+    };
+}
+
+function computeStudentSegmentWidth(pressureA, pressureB, baseWidth) {
+    const base = typeof baseWidth === 'number' && baseWidth > 0 ? baseWidth : 1.6;
+    const average = ((pressureA || 0.5) + (pressureB || 0.5)) / 2;
+    const minWidth = base * 0.35;
+    const maxWidth = base * 1.6;
+    const width = base * (average + 0.05);
+    return studentClamp(width, Math.max(0.75, minWidth), Math.max(minWidth, maxWidth));
+}
+
+function studentClamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
 }
 
 function drawStudentBackground(ctx, image) {
