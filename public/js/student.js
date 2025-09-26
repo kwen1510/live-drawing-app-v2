@@ -27,6 +27,7 @@ const fullscreenEnterIcon = document.getElementById('fullscreenEnterIcon');
 const fullscreenExitIcon = document.getElementById('fullscreenExitIcon');
 const fullscreenToggleLabel = document.getElementById('fullscreenToggleLabel');
 const ctx = canvas.getContext('2d');
+const rootElement = document.documentElement;
 const BASE_CANVAS_WIDTH = 800;
 const BASE_CANVAS_HEIGHT = 600;
 const colorButtons = Array.from(document.querySelectorAll('.color-btn'));
@@ -458,6 +459,14 @@ function updateFullscreenUI() {
 
     if (canvasToolbar) {
         canvasToolbar.dataset.fullscreen = String(isFullscreen);
+    }
+
+    if (document.body) {
+        document.body.classList.toggle('canvas-fullscreen-active', isFullscreen);
+    }
+
+    if (rootElement) {
+        rootElement.classList.toggle('canvas-fullscreen-active', isFullscreen);
     }
 
     fullscreenToggle.setAttribute('aria-pressed', String(isFullscreen));
@@ -926,21 +935,44 @@ function shouldIgnoreEvent(event) {
         return false;
     }
 
+    const hasMultipleTouches = Array.isArray(event.touches) && event.touches.length > 1;
+
     if (typeof event.pointerType === 'string' && event.pointerType !== '') {
-        if (event.pointerType === 'pen' || event.pointerType === 'mouse') {
+        const pointerType = event.pointerType.toLowerCase();
+
+        if (pointerType === 'pen' || pointerType === 'mouse') {
             return false;
         }
 
-        if (event.pointerType === 'touch') {
-            const averageWidth = typeof event.width === 'number' && typeof event.height === 'number'
-                ? (event.width + event.height) / 2
-                : null;
+        if (pointerType === 'touch') {
+            if (hasMultipleTouches || event.isPrimary === false) {
+                return true;
+            }
 
-            if (averageWidth && averageWidth <= 14) {
+            const width = typeof event.width === 'number' ? event.width : null;
+            const height = typeof event.height === 'number' ? event.height : null;
+            const hasZeroContact = (width !== null && width === 0) || (height !== null && height === 0);
+            const averageWidth = width !== null && height !== null
+                ? (width + height) / 2
+                : (width !== null ? width : height);
+
+            if (averageWidth !== null && averageWidth > 24) {
+                return true;
+            }
+
+            if (hasZeroContact) {
                 return false;
             }
 
-            if (typeof event.pressure === 'number' && event.pressure > 0 && (!averageWidth || averageWidth <= 18)) {
+            if (typeof event.pressure === 'number' && event.pressure > 0) {
+                return false;
+            }
+
+            if (averageWidth !== null && averageWidth <= 18) {
+                return false;
+            }
+
+            if (averageWidth === null) {
                 return false;
             }
 
@@ -951,6 +983,10 @@ function shouldIgnoreEvent(event) {
     }
 
     if (event.type && event.type.includes('touch')) {
+        if (hasMultipleTouches) {
+            return true;
+        }
+
         const touch = event.touches?.[0] || event.changedTouches?.[0];
         if (!touch) {
             return true;
@@ -966,21 +1002,23 @@ function shouldIgnoreEvent(event) {
 
         const radiusX = typeof touch.radiusX === 'number' ? touch.radiusX : null;
         const radiusY = typeof touch.radiusY === 'number' ? touch.radiusY : null;
-        const averageRadius = radiusX && radiusY ? (radiusX + radiusY) / 2 : radiusX || radiusY;
+        const averageRadius = radiusX !== null && radiusY !== null
+            ? (radiusX + radiusY) / 2
+            : (radiusX !== null ? radiusX : radiusY);
 
-        if (averageRadius && averageRadius <= 18) {
-            return false;
-        }
-
-        if (typeof touch.force === 'number' && touch.force > 0 && (!averageRadius || averageRadius <= 20)) {
-            return false;
-        }
-
-        if (event.touches && event.touches.length > 1) {
+        if (averageRadius !== null && averageRadius > 24) {
             return true;
         }
 
-        return averageRadius ? averageRadius > 24 : false;
+        if (typeof touch.force === 'number' && touch.force > 0) {
+            return false;
+        }
+
+        if (averageRadius !== null && averageRadius <= 18) {
+            return false;
+        }
+
+        return true;
     }
 
     return false;
