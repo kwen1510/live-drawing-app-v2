@@ -14,16 +14,37 @@
 <body class="student-shell">
     <div class="student-shell__wrap">
         <header class="student-topbar">
-            <div class="student-topbar__left">
-                <span class="student-topbar__title" id="welcomeHeading">Student canvas</span>
-                <button id="clearCanvasButton" class="student-topbar__button" type="button">Clear</button>
+            <div class="student-topbar__row">
+                <div class="student-topbar__left">
+                    <span class="student-topbar__title" id="welcomeHeading">Student canvas</span>
+                </div>
+                <div class="student-topbar__right">
+                    <span class="student-topbar__session">Session <strong id="sessionCodeDisplay">&mdash;&mdash;&mdash;&mdash;</strong></span>
+                    <span class="student-topbar__status student-topbar__status--pending" id="connectionStatus" role="status" aria-live="polite">
+                        <span class="status-indicator status-indicator--pending" id="connectionIndicator" aria-hidden="true"></span>
+                        <span id="connectionLabel">Connecting...</span>
+                    </span>
+                </div>
             </div>
-            <div class="student-topbar__right">
-                <span class="student-topbar__session">Session <strong id="sessionCodeDisplay">&mdash;&mdash;&mdash;&mdash;</strong></span>
-                <span class="student-topbar__status student-topbar__status--pending" id="connectionStatus" role="status" aria-live="polite">
-                    <span class="status-indicator status-indicator--pending" id="connectionIndicator" aria-hidden="true"></span>
-                    <span id="connectionLabel">Connecting...</span>
-                </span>
+            <div class="student-toolbar" role="toolbar" aria-label="Drawing controls">
+                <div class="student-toolbar__group" role="group" aria-label="Choose colour">
+                    <button class="student-toolbar__button student-toolbar__button--color is-active" type="button" data-color="#111827" style="--swatch-color: #111827" aria-label="Use black ink" data-color-name="Black"></button>
+                    <button class="student-toolbar__button student-toolbar__button--color" type="button" data-color="#ef4444" style="--swatch-color: #ef4444" aria-label="Use red ink" data-color-name="Red"></button>
+                    <button class="student-toolbar__button student-toolbar__button--color" type="button" data-color="#16a34a" style="--swatch-color: #16a34a" aria-label="Use green ink" data-color-name="Green"></button>
+                    <button class="student-toolbar__button student-toolbar__button--color" type="button" data-color="#2563eb" style="--swatch-color: #2563eb" aria-label="Use blue ink" data-color-name="Blue"></button>
+                </div>
+                <div class="student-toolbar__group" role="group" aria-label="Drawing mode">
+                    <button class="student-toolbar__button is-active" type="button" data-tool="brush">Brush</button>
+                    <button class="student-toolbar__button" type="button" data-tool="eraser">Eraser</button>
+                </div>
+                <div class="student-toolbar__group" role="group" aria-label="Canvas actions">
+                    <button id="undoButton" class="student-toolbar__button" type="button" disabled>Undo</button>
+                    <button id="redoButton" class="student-toolbar__button" type="button" disabled>Redo</button>
+                    <button id="clearCanvasButton" class="student-toolbar__button student-toolbar__button--danger" type="button">Clear</button>
+                </div>
+                <div class="student-toolbar__group" role="group" aria-label="Stylus preferences">
+                    <button id="stylusModeButton" class="student-toolbar__button" type="button" aria-pressed="false">Stylus mode</button>
+                </div>
             </div>
         </header>
         <main class="student-canvas" aria-label="Drawing surface">

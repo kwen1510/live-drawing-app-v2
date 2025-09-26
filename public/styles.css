@@ -1611,10 +1611,19 @@ input[type="range"]::-moz-range-thumb {
 body.student-shell {
     margin: 0;
     min-height: 100vh;
+    height: 100vh;
     background: #f4f5fb;
     color: #111827;
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     overscroll-behavior: none;
+    overflow: hidden;
+}
+
+@supports (height: 100dvh) {
+    body.student-shell {
+        min-height: 100dvh;
+        height: 100dvh;
+    }
 }
 
 body.student-shell * {
@@ -1624,25 +1633,40 @@ body.student-shell * {
 .student-shell__wrap {
     display: grid;
     grid-template-rows: auto 1fr;
-    height: 100vh;
     width: 100%;
-    position: fixed;
-    inset: 0;
+    height: var(--student-viewport-height, 100vh);
+    min-height: var(--student-viewport-height, 100vh);
+    overflow: hidden;
 }
+
+@supports (height: 100dvh) {
+    .student-shell__wrap {
+        height: var(--student-viewport-height, 100dvh);
+        min-height: var(--student-viewport-height, 100dvh);
+    }
+}
+
 
 .student-topbar {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    padding: 12px 20px;
-    background: rgba(255, 255, 255, 0.9);
-    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 20px;
+    background: var(--surface-muted);
+    background: color-mix(in srgb, var(--surface) 85%, transparent);
+    border-bottom: 1px solid var(--border);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     position: sticky;
     top: 0;
     z-index: 10;
+}
+
+.student-topbar__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
 }
 
 .student-topbar__left,
@@ -1655,33 +1679,12 @@ body.student-shell * {
 .student-topbar__title {
     font-size: 1rem;
     font-weight: 600;
-    color: #1f2937;
-}
-
-.student-topbar__button {
-    font: inherit;
-    font-weight: 500;
-    padding: 8px 16px;
-    border-radius: 999px;
-    border: 1px solid rgba(15, 23, 42, 0.12);
-    background: #ffffff;
-    color: #111827;
-    cursor: pointer;
-    transition: background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.student-topbar__button:active {
-    transform: translateY(1px);
-}
-
-.student-topbar__button:hover {
-    background: #f1f5f9;
-    box-shadow: 0 4px 12px rgba(148, 163, 184, 0.35);
+    color: var(--text-strong);
 }
 
 .student-topbar__session {
     font-size: 0.95rem;
-    color: #1f2937;
+    color: var(--text-strong);
 }
 
 .student-topbar__session strong {
@@ -1694,7 +1697,7 @@ body.student-shell * {
     align-items: center;
     gap: 8px;
     font-size: 0.9rem;
-    color: #1f2937;
+    color: var(--text-strong);
     padding: 6px 10px;
     border-radius: 999px;
     background: rgba(59, 130, 246, 0.08);
@@ -1728,6 +1731,7 @@ body.student-shell * {
     padding-right: calc(16px + env(safe-area-inset-right));
     height: 100%;
     display: flex;
+    min-height: 0;
 }
 
 .student-canvas__surface {
@@ -1737,6 +1741,8 @@ body.student-shell * {
     box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
     overflow: hidden;
     position: relative;
+    min-height: 0;
+    height: 100%;
 }
 
 .student-canvas__surface canvas {
@@ -1747,17 +1753,137 @@ body.student-shell * {
     background: #ffffff;
 }
 
+.student-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.student-toolbar__group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--surface-soft);
+    background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
+    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.student-toolbar__button {
+    font: inherit;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-strong);
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.student-toolbar__button:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-primary);
+}
+
+.student-toolbar__button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--surface-muted) 70%, transparent);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.15);
+}
+
+.student-toolbar__button:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.student-toolbar__button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.student-toolbar__button.is-active {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+    box-shadow: var(--shadow-tool-active);
+}
+
+.student-toolbar__button--danger {
+    color: var(--danger);
+}
+
+.student-toolbar__button--color {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background: transparent;
+    box-shadow: none;
+}
+
+.student-toolbar__button--color::before {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--swatch-color, #111827);
+    box-shadow: var(--shadow-color-btn);
+}
+
+.student-toolbar__button--color:hover:not(:disabled)::before,
+.student-toolbar__button--color.is-active::before {
+    box-shadow: 0 12px 30px rgba(99, 102, 241, 0.35);
+}
+
+.student-toolbar__button--color.is-active {
+    border-color: var(--primary);
+}
+
+.student-toolbar__button--color:focus-visible {
+    box-shadow: var(--focus-primary);
+}
+
+.student-toolbar__group:last-child {
+    margin-left: auto;
+}
+
 @media (max-width: 768px) {
-    .student-topbar {
+    .student-topbar__row {
         flex-direction: column;
         align-items: flex-start;
-        gap: 12px;
+        gap: 8px;
     }
 
-    .student-topbar__left,
     .student-topbar__right {
         width: 100%;
         justify-content: space-between;
+    }
+
+    .student-toolbar__group {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+
+    .student-toolbar__group:last-child {
+        margin-left: 0;
+    }
+
+    .student-toolbar__button {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+
+    .student-toolbar__button--color {
+        flex: 0 0 auto;
     }
 
     .student-canvas {
