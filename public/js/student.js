@@ -10,7 +10,16 @@ if (!username || !sessionCode) {
 const welcomeHeading = document.getElementById('welcomeHeading');
 const sessionCodeDisplay = document.getElementById('sessionCodeDisplay');
 const clearButton = document.getElementById('clearCanvasButton');
+const undoButton = document.getElementById('undoButton');
+const redoButton = document.getElementById('redoButton');
+const stylusButton = document.getElementById('stylusModeButton');
+const colorButtons = document.querySelectorAll('[data-color]');
+const toolButtons = document.querySelectorAll('[data-tool]');
 const canvas = document.getElementById('drawingCanvas');
+const studentShellWrap = document.querySelector('.student-shell__wrap');
+const studentTopbar = document.querySelector('.student-topbar');
+const studentCanvasContainer = document.querySelector('.student-canvas');
+const studentCanvasSurface = document.querySelector('.student-canvas__surface');
 const connectionLabel = document.getElementById('connectionLabel');
 const connectionIndicator = document.getElementById('connectionIndicator');
 const statusPill = document.getElementById('connectionStatus');
@@ -22,21 +31,35 @@ const BASE_CANVAS_HEIGHT = 600;
 const MAX_DPR = 3;
 const DRAW_BASE_WIDTH = 2.2;
 const DEFAULT_STROKE_COLOR = '#111827';
+const ERASER_BASE_WIDTH = DRAW_BASE_WIDTH * 5.2;
+
+const TOOL_TYPES = {
+    BRUSH: 'brush',
+    ERASER: 'eraser'
+};
 
 let supabase;
 let channel;
 let channelReady = false;
 
 let storedPaths = [];
+let redoStack = [];
 let backgroundImageData = null;
 let backgroundImageElement = null;
+
+const toolState = {
+    color: DEFAULT_STROKE_COLOR,
+    tool: TOOL_TYPES.BRUSH,
+    stylusOnly: false
+};
 
 const drawingState = {
     isDrawing: false,
     pointerId: null,
     buffer: [],
     history: [],
-    rafId: null
+    rafId: null,
+    currentStroke: null
 };
 
 const canvasSize = {
@@ -52,9 +75,70 @@ if (sessionCodeDisplay) {
     sessionCodeDisplay.textContent = sessionCode || '----';
 }
 
+setupViewportSizing();
 initialiseCanvas();
+setupToolbox();
 setupClearButton();
 setupRealtime();
+
+function setupViewportSizing() {
+    if (!studentShellWrap || !studentTopbar || !studentCanvasContainer) {
+        return;
+    }
+
+    let pendingRaf = null;
+
+    const applyViewportSizing = () => {
+        pendingRaf = null;
+
+        const viewportHeight = window.visualViewport?.height || window.innerHeight;
+        const viewportWidth = window.visualViewport?.width || window.innerWidth;
+
+        studentShellWrap.style.setProperty('--student-viewport-height', `${viewportHeight}px`);
+        studentShellWrap.style.setProperty('--student-viewport-width', `${viewportWidth}px`);
+
+        studentShellWrap.style.height = `${viewportHeight}px`;
+        studentShellWrap.style.minHeight = `${viewportHeight}px`;
+
+        const topbarHeight = studentTopbar.offsetHeight;
+        const availableHeight = Math.max(0, viewportHeight - topbarHeight);
+
+        studentCanvasContainer.style.height = `${availableHeight}px`;
+        studentCanvasContainer.style.minHeight = `${availableHeight}px`;
+        studentCanvasContainer.style.maxHeight = `${availableHeight}px`;
+
+        if (studentCanvasSurface) {
+            studentCanvasSurface.style.height = '100%';
+            studentCanvasSurface.style.minHeight = '0px';
+            studentCanvasSurface.style.maxHeight = '100%';
+        }
+
+        requestAnimationFrame(resizeCanvas);
+    };
+
+    const queueViewportSizing = () => {
+        if (pendingRaf !== null) {
+            cancelAnimationFrame(pendingRaf);
+        }
+        pendingRaf = requestAnimationFrame(applyViewportSizing);
+    };
+
+    queueViewportSizing();
+
+    const topbarResizeObserver = new ResizeObserver(queueViewportSizing);
+    topbarResizeObserver.observe(studentTopbar);
+
+    window.addEventListener('resize', queueViewportSizing);
+
+    window.addEventListener('orientationchange', () => {
+        setTimeout(queueViewportSizing, 150);
+    });
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', queueViewportSizing, { passive: true });
+        window.visualViewport.addEventListener('scroll', queueViewportSizing, { passive: true });
+    }
+}
 
 function initialiseCanvas() {
     if (!canvas || !ctx) {
@@ -87,6 +171,13 @@ function initialiseCanvas() {
     resizeCanvas();
 }
 
+function setupToolbox() {
+    initialiseColorPalette();
+    initialiseToolButtons();
+    initialiseHistoryButtons();
+    initialiseStylusButton();
+}
+
 function setupClearButton() {
     if (!clearButton) {
         return;
@@ -95,6 +186,147 @@ function setupClearButton() {
     clearButton.addEventListener('click', () => {
         clearCanvas({ broadcast: true });
     });
+}
+
+function initialiseColorPalette() {
+    if (!colorButtons || colorButtons.length === 0) {
+        return;
+    }
+
+    colorButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const color = button.dataset.color;
+            if (typeof color === 'string' && color.trim().length > 0) {
+                toolState.color = color;
+                if (toolState.tool !== TOOL_TYPES.BRUSH) {
+                    toolState.tool = TOOL_TYPES.BRUSH;
+                    updateToolSelection();
+                }
+                updateColorSelection();
+            }
+        });
+    });
+
+    updateColorSelection();
+}
+
+function initialiseToolButtons() {
+    if (!toolButtons || toolButtons.length === 0) {
+        return;
+    }
+
+    toolButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const tool = button.dataset.tool;
+            if (tool === TOOL_TYPES.BRUSH || tool === TOOL_TYPES.ERASER) {
+                toolState.tool = tool;
+                updateToolSelection();
+                if (tool === TOOL_TYPES.BRUSH) {
+                    updateColorSelection();
+                }
+            }
+        });
+    });
+
+    updateToolSelection();
+}
+
+function initialiseHistoryButtons() {
+    if (undoButton) {
+        undoButton.addEventListener('click', () => {
+            undoLastPath();
+        });
+    }
+
+    if (redoButton) {
+        redoButton.addEventListener('click', () => {
+            redoLastPath();
+        });
+    }
+
+    updateHistoryButtons();
+}
+
+function initialiseStylusButton() {
+    if (!stylusButton) {
+        return;
+    }
+
+    stylusButton.addEventListener('click', () => {
+        toolState.stylusOnly = !toolState.stylusOnly;
+        updateStylusModeButton();
+    });
+
+    updateStylusModeButton();
+}
+
+function updateColorSelection() {
+    if (!colorButtons) {
+        return;
+    }
+
+    colorButtons.forEach((button) => {
+        const isActive = button.dataset.color === toolState.color;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+}
+
+function updateToolSelection() {
+    if (!toolButtons) {
+        return;
+    }
+
+    toolButtons.forEach((button) => {
+        const isActive = button.dataset.tool === toolState.tool;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+}
+
+function updateStylusModeButton() {
+    if (!stylusButton) {
+        return;
+    }
+
+    stylusButton.classList.toggle('is-active', toolState.stylusOnly);
+    stylusButton.setAttribute('aria-pressed', toolState.stylusOnly ? 'true' : 'false');
+    stylusButton.textContent = toolState.stylusOnly ? 'Stylus mode (pen only)' : 'Stylus mode';
+    stylusButton.setAttribute('title', toolState.stylusOnly ? 'Stylus and mouse input only' : 'Allow pen, touch and mouse input');
+}
+
+function updateHistoryButtons() {
+    if (undoButton) {
+        undoButton.disabled = storedPaths.length === 0;
+    }
+
+    if (redoButton) {
+        redoButton.disabled = redoStack.length === 0;
+    }
+}
+
+function undoLastPath() {
+    if (storedPaths.length === 0) {
+        return;
+    }
+
+    const path = storedPaths.pop();
+    redoStack.push(path);
+    redrawCanvas();
+    updateHistoryButtons();
+    broadcastCanvas('update');
+}
+
+function redoLastPath() {
+    if (redoStack.length === 0) {
+        return;
+    }
+
+    const path = redoStack.pop();
+    storedPaths.push(path);
+    redrawCanvas();
+    updateHistoryButtons();
+    broadcastCanvas('update');
 }
 
 function setupRealtime() {
@@ -234,6 +466,7 @@ function handlePointerDown(event) {
     drawingState.pointerId = typeof event.pointerId === 'number' ? event.pointerId : null;
     drawingState.buffer = [];
     drawingState.history = [];
+    drawingState.currentStroke = getCurrentStrokeSettings();
 
     const point = getCanvasPoint(event);
     addPointToStroke(point);
@@ -328,6 +561,7 @@ function finalizeStroke(cancelled) {
         }
         drawingState.buffer = [];
         drawingState.history = [];
+        drawingState.currentStroke = null;
         return;
     }
 
@@ -337,8 +571,10 @@ function finalizeStroke(cancelled) {
     }
     drawSmoothStroke(true);
 
+    const stroke = drawingState.currentStroke || getCurrentStrokeSettings();
+
     if (drawingState.history.length === 1) {
-        drawDot(ctx, drawingState.history[0], DEFAULT_STROKE_COLOR, DRAW_BASE_WIDTH);
+        drawDot(ctx, drawingState.history[0], stroke);
     }
 
     const normalisedPoints = drawingState.history
@@ -347,15 +583,19 @@ function finalizeStroke(cancelled) {
 
     if (normalisedPoints.length > 0) {
         storedPaths.push({
-            color: DEFAULT_STROKE_COLOR,
-            width: DRAW_BASE_WIDTH,
+            color: stroke.color || DEFAULT_STROKE_COLOR,
+            width: typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DRAW_BASE_WIDTH,
+            erase: Boolean(stroke.erase),
             points: normalisedPoints
         });
+        redoStack = [];
+        updateHistoryButtons();
         broadcastCanvas('update');
     }
 
     drawingState.buffer = [];
     drawingState.history = [];
+    drawingState.currentStroke = null;
 }
 
 function scheduleDraw() {
@@ -381,12 +621,18 @@ function drawSmoothStroke(flush = false) {
         return;
     }
 
-    ctx.strokeStyle = DEFAULT_STROKE_COLOR;
+    const stroke = drawingState.currentStroke || getCurrentStrokeSettings();
+    const baseWidth = typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DRAW_BASE_WIDTH;
+    const strokeColor = stroke.erase ? '#000000' : (stroke.color || DEFAULT_STROKE_COLOR);
+    ctx.save();
+    ctx.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = strokeColor;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     if (points.length === 1) {
-        drawDot(ctx, points[0], DEFAULT_STROKE_COLOR, DRAW_BASE_WIDTH);
+        drawDot(ctx, points[0], stroke);
+        ctx.restore();
         drawingState.buffer = flush ? [] : points.slice(-1);
         return;
     }
@@ -398,7 +644,7 @@ function drawSmoothStroke(flush = false) {
     for (let i = 1; i < points.length; i += 1) {
         const current = points[i];
         const midpoint = getMidpoint(previous, current);
-        const width = DRAW_BASE_WIDTH * (((previous.p + current.p) * 0.5) + 0.05);
+        const width = baseWidth * (((previous.p + current.p) * 0.5) + 0.05);
 
         ctx.lineWidth = width;
         ctx.quadraticCurveTo(previous.x, previous.y, midpoint.x, midpoint.y);
@@ -408,17 +654,21 @@ function drawSmoothStroke(flush = false) {
     }
 
     drawingState.buffer = flush ? [] : points.slice(-2);
+    ctx.restore();
 }
 
 function clearCanvas({ broadcast = false } = {}) {
     storedPaths = [];
+    redoStack = [];
     drawingState.buffer = [];
     drawingState.history = [];
     if (drawingState.rafId !== null) {
         cancelAnimationFrame(drawingState.rafId);
         drawingState.rafId = null;
     }
+    drawingState.currentStroke = null;
     redrawCanvas();
+    updateHistoryButtons();
 
     if (broadcast) {
         broadcastCanvas('clear');
@@ -461,6 +711,8 @@ function redrawCanvas() {
     storedPaths.forEach((path) => {
         renderStoredPath(path);
     });
+
+    ctx.globalCompositeOperation = 'source-over';
 }
 
 function drawBackgroundImage(image) {
@@ -506,15 +758,21 @@ function renderStoredPath(path) {
         return;
     }
 
-    const color = path.color || DEFAULT_STROKE_COLOR;
-    const baseWidth = typeof path.width === 'number' && path.width > 0 ? path.width : DRAW_BASE_WIDTH;
+    const stroke = {
+        color: path.color || DEFAULT_STROKE_COLOR,
+        width: typeof path.width === 'number' && path.width > 0 ? path.width : DRAW_BASE_WIDTH,
+        erase: Boolean(path.erase)
+    };
 
+    ctx.save();
     if (points.length === 1) {
-        drawDot(ctx, points[0], color, baseWidth);
+        drawDot(ctx, points[0], stroke);
+        ctx.restore();
         return;
     }
 
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = stroke.erase ? '#000000' : stroke.color;
+    ctx.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -525,7 +783,7 @@ function renderStoredPath(path) {
     for (let i = 1; i < points.length; i += 1) {
         const current = points[i];
         const midpoint = getMidpoint(previous, current);
-        const width = baseWidth * (((previous.p + current.p) * 0.5) + 0.05);
+        const width = stroke.width * (((previous.p + current.p) * 0.5) + 0.05);
 
         ctx.lineWidth = width;
         ctx.quadraticCurveTo(previous.x, previous.y, midpoint.x, midpoint.y);
@@ -534,7 +792,8 @@ function renderStoredPath(path) {
         previous = current;
     }
 
-    drawDot(ctx, points[points.length - 1], color, baseWidth);
+    drawDot(ctx, points[points.length - 1], stroke);
+    ctx.restore();
 }
 
 function applyBackgroundImage(imageData) {
@@ -588,18 +847,37 @@ function getCanvasPoint(event) {
     };
 }
 
-function drawDot(context, point, color, baseWidth) {
-    if (!point) {
+function getCurrentStrokeSettings() {
+    if (toolState.tool === TOOL_TYPES.ERASER) {
+        return {
+            color: '#000000',
+            width: ERASER_BASE_WIDTH,
+            erase: true
+        };
+    }
+
+    return {
+        color: toolState.color || DEFAULT_STROKE_COLOR,
+        width: DRAW_BASE_WIDTH,
+        erase: false
+    };
+}
+
+function drawDot(context, point, stroke) {
+    if (!point || !stroke) {
         return;
     }
 
-    const width = typeof baseWidth === 'number' && baseWidth > 0 ? baseWidth : DRAW_BASE_WIDTH;
-    const radius = clamp(width * (point.p + 0.05), width * 0.45, width * 1.6);
+    const baseWidth = typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DRAW_BASE_WIDTH;
+    const radius = clamp(baseWidth * (point.p + 0.05), baseWidth * 0.45, baseWidth * 1.6);
 
+    context.save();
+    context.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over';
     context.beginPath();
     context.arc(point.x, point.y, radius, 0, Math.PI * 2);
-    context.fillStyle = color;
+    context.fillStyle = stroke.erase ? '#000000' : (stroke.color || DEFAULT_STROKE_COLOR);
     context.fill();
+    context.restore();
 }
 
 function getMidpoint(a, b) {
@@ -663,6 +941,7 @@ function clonePaths(source) {
     return source.map((path) => ({
         color: path.color,
         width: path.width,
+        erase: Boolean(path.erase),
         points: Array.isArray(path.points)
             ? path.points.map((point) => (Array.isArray(point) ? [...point] : { ...point }))
             : []
@@ -736,7 +1015,11 @@ function isSupportedPointer(event) {
     }
 
     const type = typeof event.pointerType === 'string' ? event.pointerType.toLowerCase() : '';
-    return type === '' || type === 'pen' || type === 'mouse';
+    if (toolState.stylusOnly) {
+        return type === 'pen' || type === 'mouse';
+    }
+
+    return type === '' || type === 'pen' || type === 'mouse' || type === 'touch';
 }
 
 function clamp(value, min, max) {

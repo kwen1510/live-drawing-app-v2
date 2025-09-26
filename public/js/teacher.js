@@ -608,13 +608,21 @@ function drawSmoothStudentPath(ctx, path) {
         return;
     }
 
+    const baseWidth = typeof path.width === 'number' && path.width > 0 ? path.width : 2.2;
+    const erase = Boolean(path.erase);
+    const strokeColor = erase ? '#000000' : (typeof path.color === 'string' ? path.color : '#111827');
+
+    ctx.save();
+    ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
+
     if (points.length === 1) {
         const [point] = points;
-        const radius = Math.max(path.width / 2, 0.5);
+        const radius = Math.max(baseWidth * (point.p + 0.05), baseWidth * 0.35, baseWidth / 2, 0.5);
         ctx.beginPath();
         ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = path.color;
+        ctx.fillStyle = strokeColor;
         ctx.fill();
+        ctx.restore();
         return;
     }
 
@@ -624,13 +632,13 @@ function drawSmoothStudentPath(ctx, path) {
     for (let i = 1; i < points.length; i += 1) {
         const current = points[i];
         const midpoint = getStudentMidpoint(previous, current);
-        const width = computeStudentSegmentWidth(previous.p, current.p, path.width);
+        const width = computeStudentSegmentWidth(previous.p, current.p, baseWidth);
 
         ctx.beginPath();
         ctx.moveTo(startPoint.x, startPoint.y);
         ctx.quadraticCurveTo(previous.x, previous.y, midpoint.x, midpoint.y);
         ctx.lineWidth = width;
-        ctx.strokeStyle = path.color;
+        ctx.strokeStyle = strokeColor;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.stroke();
@@ -640,12 +648,13 @@ function drawSmoothStudentPath(ctx, path) {
     }
 
     const lastPoint = points[points.length - 1];
-    const finalWidth = computeStudentSegmentWidth(lastPoint.p, lastPoint.p, path.width);
-    const radius = Math.max(path.width / 2, finalWidth / 2, path.width * 0.2);
+    const finalWidth = computeStudentSegmentWidth(lastPoint.p, lastPoint.p, baseWidth);
+    const radius = Math.max(baseWidth / 2, finalWidth / 2, baseWidth * 0.35);
     ctx.beginPath();
     ctx.arc(lastPoint.x, lastPoint.y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = path.color;
+    ctx.fillStyle = strokeColor;
     ctx.fill();
+    ctx.restore();
 }
 
 function normaliseStudentPoints(rawPoints) {
