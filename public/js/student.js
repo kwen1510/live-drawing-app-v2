@@ -33,6 +33,13 @@ const DRAW_BASE_WIDTH = 2.2;
 const DEFAULT_STROKE_COLOR = '#111827';
 const ERASER_BASE_WIDTH = DRAW_BASE_WIDTH * 5.2;
 
+const RELIABLE_SEQUENCE_STORAGE_KEY = sessionCode
+    ? `student-${sessionCode}-last-sequence`
+    : 'student-last-sequence';
+const RELIABLE_QUESTION_STORAGE_KEY = sessionCode
+    ? `student-${sessionCode}-question-number`
+    : 'student-question-number';
+
 const TOOL_TYPES = {
     PEN: 'pen',
     ERASER: 'eraser'
@@ -47,6 +54,13 @@ let historyActions = [];
 let redoActions = [];
 let backgroundImageData = null;
 let backgroundImageElement = null;
+
+const reliableState = {
+    lastSequence: readNumericSession(RELIABLE_SEQUENCE_STORAGE_KEY, 0),
+    questionNumber: readNumericSession(RELIABLE_QUESTION_STORAGE_KEY, 1)
+};
+
+let currentQuestionNumber = reliableState.questionNumber;
 
 const toolState = {
     color: DEFAULT_STROKE_COLOR,
@@ -464,6 +478,7 @@ async function initialiseRealtime() {
 
             announceStudent();
             broadcastCanvas('joined');
+            requestSessionState();
         } else if (status === 'CHANNEL_ERROR') {
             setStatusBadge('Realtime connection error', 'error');
         } else if (status === 'TIMED_OUT') {
@@ -498,6 +513,7 @@ function wireChannelEvents() {
     channel.on('broadcast', { event: 'teacher_ready' }, () => {
         setStatusBadge('Teacher connected', 'success');
         broadcastCanvas('sync');
+        requestSessionState();
     });
 
     channel.on('broadcast', { event: 'request_canvas' }, ({ payload }) => {
@@ -511,20 +527,15 @@ function wireChannelEvents() {
     });
 
     channel.on('broadcast', { event: 'set_background' }, ({ payload }) => {
-        const { imageData, target } = payload || {};
-        if (target && target !== username) {
-            return;
-        }
-
-        if (typeof imageData === 'string' && imageData.length > 0) {
-            applyBackgroundImage(imageData);
-        } else {
-            removeBackgroundImage();
-        }
+        handleTeacherBackgroundEvent(payload);
     });
 
-    channel.on('broadcast', { event: 'next_question' }, () => {
-        handleNextQuestionFromTeacher();
+    channel.on('broadcast', { event: 'next_question' }, ({ payload }) => {
+        handleTeacherNextQuestionEvent(payload);
+    });
+
+    channel.on('broadcast', { event: 'session_state' }, ({ payload }) => {
+        processSessionState(payload);
     });
 
     channel.on('broadcast', { event: 'session_closed' }, ({ payload }) => {
@@ -534,6 +545,106 @@ function wireChannelEvents() {
             window.location.href = '/';
         }
     });
+}
+
+function requestSessionState() {
+    if (!channelReady) {
+        return;
+    }
+
+    safeSend('session_state_request', {
+        username,
+        lastSequence: reliableState.lastSequence
+    });
+}
+
+function handleTeacherBackgroundEvent(payload = {}) {
+    const { target } = payload || {};
+    if (target && target !== username) {
+        return;
+    }
+
+    if (!trackReliableSequence(payload)) {
+        return;
+    }
+
+    const { imageData } = payload;
+    if (typeof imageData === 'string' && imageData.length > 0) {
+        applyBackgroundImage(imageData);
+    } else {
+        removeBackgroundImage();
+    }
+}
+
+function handleTeacherNextQuestionEvent(payload = {}) {
+    const isNew = trackReliableSequence(payload);
+    if (!isNew) {
+        return;
+    }
+
+    const { questionNumber } = payload || {};
+    const nextNumber = typeof questionNumber === 'number' && Number.isFinite(questionNumber)
+        ? questionNumber
+        : reliableState.questionNumber + 1;
+
+    handleNextQuestionFromTeacher(nextNumber);
+}
+
+function processSessionState(payload = {}) {
+    const { target, events, snapshot } = payload || {};
+
+    if (target && target !== username) {
+        return;
+    }
+
+    let snapshotSequence = null;
+
+    if (snapshot) {
+        const { questionNumber, lastSequence } = snapshot;
+        if (typeof questionNumber === 'number' && Number.isFinite(questionNumber)) {
+            if (questionNumber > reliableState.questionNumber) {
+                updateQuestionNumber(questionNumber);
+            }
+        }
+
+        if (typeof lastSequence === 'number' && Number.isFinite(lastSequence)) {
+            snapshotSequence = lastSequence;
+        }
+    }
+
+    if (Array.isArray(events) && events.length > 0) {
+        const sortedEvents = [...events].sort((a, b) => {
+            const aId = typeof a?.id === 'number' ? a.id : 0;
+            const bId = typeof b?.id === 'number' ? b.id : 0;
+            return aId - bId;
+        });
+
+        sortedEvents.forEach((entry) => {
+            applyReliableEvent(entry);
+        });
+    }
+
+    if (snapshotSequence !== null) {
+        updateReliableSequence(snapshotSequence);
+    }
+}
+
+function applyReliableEvent(entry) {
+    if (!entry || typeof entry.id !== 'number' || !entry.event) {
+        return;
+    }
+
+    if (entry.id <= reliableState.lastSequence) {
+        return;
+    }
+
+    const payload = entry.payload ? { ...entry.payload, __seq: entry.id } : { __seq: entry.id };
+
+    if (entry.event === 'set_background') {
+        handleTeacherBackgroundEvent(payload);
+    } else if (entry.event === 'next_question') {
+        handleTeacherNextQuestionEvent(payload);
+    }
 }
 
 function announceStudent() {
@@ -1196,7 +1307,17 @@ function removeBackgroundImage() {
     redrawCanvas();
 }
 
-function handleNextQuestionFromTeacher() {
+function handleNextQuestionFromTeacher(nextQuestionNumber = null) {
+    if (typeof nextQuestionNumber === 'number' && Number.isFinite(nextQuestionNumber)) {
+        if (nextQuestionNumber > reliableState.questionNumber) {
+            updateQuestionNumber(nextQuestionNumber);
+        } else if (nextQuestionNumber !== reliableState.questionNumber) {
+            updateQuestionNumber(nextQuestionNumber);
+        }
+    } else {
+        updateQuestionNumber(reliableState.questionNumber + 1);
+    }
+
     clearCanvas({ broadcast: false });
     removeBackgroundImage();
     broadcastCanvas('clear');
@@ -1316,6 +1437,24 @@ function clonePaths(source) {
     }));
 }
 
+function trackReliableSequence(payload = {}) {
+    if (!payload || typeof payload !== 'object') {
+        return true;
+    }
+
+    const sequence = Number(payload.__seq);
+    if (!Number.isFinite(sequence)) {
+        return true;
+    }
+
+    if (sequence <= reliableState.lastSequence) {
+        return false;
+    }
+
+    updateReliableSequence(sequence);
+    return true;
+}
+
 function broadcastCanvas(reason = 'update') {
     if (!channelReady) {
         return;
@@ -1345,6 +1484,57 @@ function safeSend(event, payload = {}) {
     channel.send({ type: 'broadcast', event, payload }).catch((error) => {
         console.error(`Supabase event "${event}" failed`, error);
     });
+}
+
+function readNumericSession(key, fallback = 0) {
+    try {
+        const stored = sessionStorage.getItem(key);
+        if (stored === null || stored === undefined) {
+            return fallback;
+        }
+
+        const value = Number(stored);
+        return Number.isFinite(value) ? value : fallback;
+    } catch (_error) {
+        return fallback;
+    }
+}
+
+function updateReliableSequence(sequence) {
+    if (typeof sequence !== 'number' || !Number.isFinite(sequence)) {
+        return;
+    }
+
+    if (sequence <= reliableState.lastSequence) {
+        return;
+    }
+
+    reliableState.lastSequence = sequence;
+
+    try {
+        sessionStorage.setItem(RELIABLE_SEQUENCE_STORAGE_KEY, String(sequence));
+    } catch (_error) {
+        // Ignore storage write failures (e.g., private browsing)
+    }
+}
+
+function updateQuestionNumber(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return;
+    }
+
+    if (value <= 0) {
+        return;
+    }
+
+    reliableState.questionNumber = value;
+    currentQuestionNumber = value;
+
+    try {
+        sessionStorage.setItem(RELIABLE_QUESTION_STORAGE_KEY, String(value));
+    } catch (_error) {
+        // Ignore storage write failures
+    }
 }
 
 function setStatusBadge(text, variant) {

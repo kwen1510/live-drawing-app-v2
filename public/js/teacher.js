@@ -126,6 +126,20 @@ const presenceKey = `teacher-${Math.random().toString(36).slice(2, 10)}`;
 const students = new Map();
 const GRID_STORAGE_KEY = 'teacher-grid-columns';
 
+const RELIABLE_EVENT_LIMIT = 64;
+let reliableSequence = 0;
+const reliableEventLog = [];
+
+const sessionState = {
+    questionNumber: 1,
+    lastQuestionStartedAt: Date.now(),
+    backgroundVersion: 0,
+    backgroundName: null,
+    backgroundActive: false,
+    lastSequence: 0,
+    lastBackgroundUpdateAt: Date.now()
+};
+
 const supabaseUrl = window.SUPABASE_URL;
 const supabaseAnonKey = window.SUPABASE_ANON_KEY;
 
@@ -175,6 +189,7 @@ async function initialiseTeacherConsole() {
             }
 
             safeSend('teacher_ready', { sessionCode });
+            sendSessionSnapshot();
             startSyncLoop();
         } else if (status === 'CHANNEL_ERROR') {
             setStatusBadge('Realtime connection error', 'error');
@@ -194,6 +209,116 @@ async function initialiseTeacherConsole() {
     window.addEventListener('beforeunload', handleWindowUnload);
 }
 
+function clonePayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+        return payload;
+    }
+
+    if (typeof structuredClone === 'function') {
+        return structuredClone(payload);
+    }
+
+    try {
+        return JSON.parse(JSON.stringify(payload));
+    } catch (_error) {
+        return payload;
+    }
+}
+
+function sendReliableBroadcast(event, payload = {}, options = {}) {
+    if (!channelReady || !channel) {
+        return null;
+    }
+
+    const shouldLog = options.log !== false;
+    let sequenceId = null;
+
+    if (shouldLog) {
+        reliableSequence += 1;
+        sequenceId = reliableSequence;
+        reliableEventLog.push({
+            id: sequenceId,
+            event,
+            payload: clonePayload(payload),
+            timestamp: Date.now()
+        });
+
+        if (reliableEventLog.length > RELIABLE_EVENT_LIMIT) {
+            reliableEventLog.shift();
+        }
+
+        sessionState.lastSequence = sequenceId;
+    }
+
+    const payloadWithSequence = shouldLog
+        ? { ...payload, __seq: sequenceId }
+        : payload;
+
+    channel.send({ type: 'broadcast', event, payload: payloadWithSequence }).then(({ error }) => {
+        if (error) {
+            console.error(`Supabase event "${event}" failed`, error);
+        }
+    }).catch((err) => {
+        console.error(`Supabase event "${event}" threw`, err);
+    });
+
+    return sequenceId;
+}
+
+function recordBackgroundChange(imageData, meta = {}) {
+    sessionState.backgroundActive = Boolean(imageData);
+    sessionState.backgroundVersion += 1;
+    sessionState.backgroundName = imageData
+        ? (meta.name || meta.label || null)
+        : null;
+    sessionState.lastBackgroundUpdateAt = Date.now();
+}
+
+function advanceQuestionState() {
+    sessionState.questionNumber += 1;
+    sessionState.lastQuestionStartedAt = Date.now();
+    sessionState.backgroundActive = Boolean(activeBackgroundImage);
+    if (!sessionState.backgroundActive) {
+        sessionState.backgroundName = null;
+    }
+}
+
+function sendSessionSnapshot(targetUsername, afterSequence = 0) {
+    if (!channelReady || !channel) {
+        return;
+    }
+
+    const events = reliableEventLog
+        .filter((entry) => typeof entry.id === 'number' && entry.id > afterSequence)
+        .map((entry) => ({
+            id: entry.id,
+            event: entry.event,
+            payload: clonePayload(entry.payload),
+            timestamp: entry.timestamp
+        }));
+
+    const snapshot = {
+        questionNumber: sessionState.questionNumber,
+        lastQuestionStartedAt: sessionState.lastQuestionStartedAt,
+        backgroundVersion: sessionState.backgroundVersion,
+        backgroundName: sessionState.backgroundName,
+        backgroundActive: sessionState.backgroundActive,
+        lastSequence: sessionState.lastSequence,
+        lastBackgroundUpdateAt: sessionState.lastBackgroundUpdateAt
+    };
+
+    const payload = {
+        snapshot,
+        events
+    };
+
+    if (targetUsername) {
+        payload.target = targetUsername;
+    }
+
+    safeSend('session_state', payload);
+}
+
 function wireChannelEvents() {
     channel.on('presence', { event: 'sync' }, handlePresenceSync);
 
@@ -206,7 +331,22 @@ function wireChannelEvents() {
                 requestStudentData(payload.username);
                 sendBackgroundToStudent(payload.username);
             }
+            sendSessionSnapshot(payload.username);
         }
+    });
+
+    channel.on('broadcast', { event: 'session_state_request' }, ({ payload }) => {
+        const { username, lastSequence } = payload || {};
+        if (!username) {
+            return;
+        }
+
+        const afterSequence = typeof lastSequence === 'number' && Number.isFinite(lastSequence)
+            ? lastSequence
+            : 0;
+
+        sendBackgroundToStudent(username);
+        sendSessionSnapshot(username, afterSequence);
     });
 
     channel.on('broadcast', { event: 'draw_batch' }, ({ payload }) => {
@@ -244,6 +384,7 @@ function handlePresenceSync() {
                 ensureStudentCard(entry.username);
                 if (isNew) {
                     requestStudentData(entry.username);
+                    sendSessionSnapshot(entry.username);
                 }
             }
         });
@@ -660,7 +801,11 @@ function applyPresetBackground(presetId) {
     }
 
     activeBackgroundImage = preset.imageData;
-    safeSend('set_background', { imageData: preset.imageData });
+    recordBackgroundChange(preset.imageData, { name: preset.label, label: preset.label });
+    sendReliableBroadcast('set_background', {
+        imageData: preset.imageData,
+        presetId: preset.id || null
+    });
     updateReferenceStatus(`${preset.label} mode sent to your students.`);
     closeModeModal();
 }
@@ -909,7 +1054,11 @@ function handlePushImageToStudents() {
         return;
     }
 
-    safeSend('set_background', { imageData: selectedImageData });
+    recordBackgroundChange(selectedImageData, { name: selectedImageName || 'Uploaded image' });
+    sendReliableBroadcast('set_background', {
+        imageData: selectedImageData,
+        fileName: selectedImageName || null
+    });
     activeBackgroundImage = selectedImageData;
     updateReferenceStatus('Image sent to your students.');
     showPushFeedback('Sent!');
@@ -921,6 +1070,7 @@ function clearReferenceImage(resetActive = false) {
 
     if (resetActive) {
         activeBackgroundImage = null;
+        recordBackgroundChange(null, { name: null });
     }
 
     activePresetId = null;
@@ -1003,7 +1153,12 @@ function handleNextQuestion() {
     }
 
     clearReferenceImage(true);
-    safeSend('next_question', { initiatedAt: Date.now() });
+    advanceQuestionState();
+    const { questionNumber } = sessionState;
+    sendReliableBroadcast('next_question', {
+        initiatedAt: Date.now(),
+        questionNumber
+    });
     clearAllStudentCanvases();
     updateReferenceStatus('Student canvases cleared. Share a new image when you\'re ready.');
 }
