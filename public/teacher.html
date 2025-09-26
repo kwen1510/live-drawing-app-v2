@@ -76,6 +76,7 @@
 
                 <div class="session-tools__actions">
                     <button id="pushImageBtn" class="primary-btn" type="button" disabled>Push to students</button>
+                    <button id="openModesBtn" class="ghost-btn" type="button">Modes</button>
                 </div>
                 <p class="session-tools__status" id="referenceStatus">Choose an image to send to your class.</p>
 
@@ -107,6 +108,56 @@
             <div class="student-grid" id="studentGrid"></div>
         </section>
     </main>
+
+    <div id="modeModal" class="app-modal" hidden aria-hidden="true">
+        <div class="app-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="modeModalTitle">
+            <button id="modeModalClose" class="app-modal__close" type="button" aria-label="Close modes menu">
+                <span aria-hidden="true">&times;</span>
+            </button>
+            <header class="app-modal__header">
+                <p class="eyebrow">Special modes</p>
+                <h2 id="modeModalTitle">Choose a classroom mode</h2>
+                <p class="app-modal__description">Send structured practice sheets and graph templates directly to your students.</p>
+            </header>
+            <div class="mode-modal__content">
+                <button class="mode-option" type="button" data-preset="chinese" aria-pressed="false">
+                    <div class="mode-option__preview">
+                        <img data-preset-preview="chinese" alt="Preview of the Chinese words practice grid">
+                    </div>
+                    <div class="mode-option__details">
+                        <span class="mode-option__title">Chinese words</span>
+                        <span class="mode-option__description">Green four-square grid with dotted guidelines.</span>
+                    </div>
+                </button>
+                <section class="mode-modal__group" aria-labelledby="graphsHeading">
+                    <div class="mode-modal__group-header">
+                        <h3 id="graphsHeading">Graphs</h3>
+                        <p>Share ready-made graph paper and axis templates.</p>
+                    </div>
+                    <div class="mode-modal__grid">
+                        <button class="mode-option" type="button" data-preset="graphCross" aria-pressed="false">
+                            <div class="mode-option__preview">
+                                <img data-preset-preview="graphCross" alt="Preview of a centred graph with arrows on the axes">
+                            </div>
+                            <div class="mode-option__details">
+                                <span class="mode-option__title">Cross grid</span>
+                                <span class="mode-option__description">Axes meet in the middle with arrows pointing up and right.</span>
+                            </div>
+                        </button>
+                        <button class="mode-option" type="button" data-preset="graphCorner" aria-pressed="false">
+                            <div class="mode-option__preview">
+                                <img data-preset-preview="graphCorner" alt="Preview of a corner graph grid with positive axes">
+                            </div>
+                            <div class="mode-option__details">
+                                <span class="mode-option__title">Corner grid</span>
+                                <span class="mode-option__description">Origin at the bottom-left with arrows on the positive axes.</span>
+                            </div>
+                        </button>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
 
     <div id="studentModal" class="student-modal" hidden aria-hidden="true">
         <div class="student-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="studentModalTitle">
