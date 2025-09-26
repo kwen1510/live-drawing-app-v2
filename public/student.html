@@ -1,136 +1,36 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>Live Drawing Tool - Student Workspace</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <script type="module" src="js/theme-toggle.js" defer></script>
     <script src="/config.js"></script>
     <script type="module" src="js/student.js" defer></script>
 </head>
-<body class="page page--student">
-    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch to dark mode" aria-pressed="false" data-theme="light">
-        <svg class="theme-toggle__icon" viewBox="0 0 24 24" aria-hidden="true">
-            <circle class="theme-toggle__sun-core" cx="12" cy="12" r="4"></circle>
-            <g class="theme-toggle__sun-rays">
-                <line x1="12" y1="2" x2="12" y2="5"></line>
-                <line x1="12" y1="19" x2="12" y2="22"></line>
-                <line x1="4.22" y1="4.22" x2="6.34" y2="6.34"></line>
-                <line x1="17.66" y1="17.66" x2="19.78" y2="19.78"></line>
-                <line x1="2" y1="12" x2="5" y2="12"></line>
-                <line x1="19" y1="12" x2="22" y2="12"></line>
-                <line x1="4.22" y1="19.78" x2="6.34" y2="17.66"></line>
-                <line x1="17.66" y1="6.34" x2="19.78" y2="4.22"></line>
-            </g>
-            <path class="theme-toggle__moon" d="M21 12.79A9 9 0 0 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-        </svg>
-    </button>
-    <header class="top-bar top-bar--student">
-        <div class="top-bar__titles">
-            <p class="eyebrow">Student workspace</p>
-            <h1 id="welcomeHeading">Ready to sketch</h1>
-            <p class="subtitle">Your strokes update instantly for the teacher&mdash;relax and focus on drawing.</p>
-        </div>
-        <div class="session-chip">
-            <span class="chip-label">Session</span>
-            <span class="chip-value" id="sessionCodeDisplay">&mdash;&mdash;&mdash;&mdash;</span>
-        </div>
-        <div class="status-badge" id="sessionStatus">Connecting...</div>
-    </header>
-
-    <main class="student-layout">
-        <section class="canvas-panel" id="canvasPanel">
-            <div class="canvas-panel__toolbar">
-                <div class="canvas-panel__titles">
-                    <h2 class="canvas-panel__title">Creative canvas</h2>
-                    <p class="canvas-panel__subtitle">Toggle focus mode for extra drawing space.</p>
-                </div>
+<body class="student-shell">
+    <div class="student-shell__wrap">
+        <header class="student-topbar">
+            <div class="student-topbar__left">
+                <span class="student-topbar__title" id="welcomeHeading">Student canvas</span>
+                <button id="clearCanvasButton" class="student-topbar__button" type="button">Clear</button>
             </div>
-            <div class="canvas-panel__layout">
-                <nav id="canvasToolbar" class="canvas-toolbar" aria-label="Canvas controls">
-                    <div class="canvas-toolbar__group canvas-toolbar__group--history" role="group" aria-label="History">
-                        <button class="quick-action-btn" type="button" data-action="undo" aria-label="Undo" title="Undo">
-                            <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <polyline points="9 15 3 9 9 3"></polyline>
-                                <path d="M3 9h10a5 5 0 0 1 0 10h-3"></path>
-                            </svg>
-                        </button>
-                        <button class="quick-action-btn" type="button" data-action="redo" aria-label="Redo" title="Redo">
-                            <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <polyline points="15 3 21 9 15 15"></polyline>
-                                <path d="M21 9H11a5 5 0 0 0 0 10h3"></path>
-                            </svg>
-                        </button>
-                        <button class="quick-action-btn quick-action-btn--danger" type="button" data-action="clear" aria-label="Clear canvas" title="Clear canvas">
-                            <svg class="quick-action-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M3 6h18"></path>
-                                <path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"></path>
-                                <path d="M10 6l1-3h2l1 3"></path>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="canvas-toolbar__group canvas-toolbar__group--colors" role="group" aria-label="Colors">
-                        <button class="color-btn black" data-color="#1e1b4b" aria-label="Black"></button>
-                        <button class="color-btn blue" data-color="#2563eb" aria-label="Blue"></button>
-                        <button class="color-btn red" data-color="#f43f5e" aria-label="Red"></button>
-                        <button class="color-btn green" data-color="#10b981" aria-label="Green"></button>
-                    </div>
-                    <div class="canvas-toolbar__group canvas-toolbar__group--tools" role="group" aria-label="Drawing mode">
-                        <button class="tool-btn" type="button" data-tool="draw" aria-pressed="false">
-                            <svg class="tool-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M3 17.25V21h3.75L19.81 7.94a1.06 1.06 0 0 0 0-1.5l-2.25-2.25a1.06 1.06 0 0 0-1.5 0L3 17.25z" fill="currentColor"></path>
-                                <path d="M14.75 6.04l3.21 3.21"></path>
-                            </svg>
-                            <span class="tool-btn__label">Brush</span>
-                        </button>
-                        <button class="tool-btn" type="button" data-tool="erase" aria-pressed="false">
-                            <svg class="tool-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M3.5 16.5 13.5 6.5a2 2 0 0 1 2.83 0l4.17 4.17a2 2 0 0 1 0 2.83l-6.5 6.5H3.5z" fill="currentColor"></path>
-                                <path d="M6 19.5h7"></path>
-                            </svg>
-                            <span class="tool-btn__label">Eraser</span>
-                        </button>
-                    </div>
-                    <div class="canvas-toolbar__group canvas-toolbar__group--brush" role="group" aria-label="Brush size" hidden aria-hidden="true">
-                        <label class="slider-field slider-field--inline">
-                            <span class="chip-label">Brush size</span>
-                            <input type="range" data-brush-size min="1" max="20" value="5">
-                        </label>
-                    </div>
-                    <div class="canvas-toolbar__group canvas-toolbar__group--stylus" role="group" aria-label="Stylus mode">
-                        <button class="toggle-btn toggle-btn--compact" type="button" data-stylus-toggle aria-pressed="true">
-                            <span class="toggle-btn__label">Stylus</span>
-                            <span class="toggle-btn__status" data-stylus-status>On</span>
-                        </button>
-                    </div>
-                    <div class="canvas-toolbar__spacer" aria-hidden="true"></div>
-                    <div class="canvas-toolbar__group canvas-toolbar__group--fullscreen" role="group" aria-label="Canvas layout">
-                        <button id="fullscreenToggle" class="canvas-panel__action-btn canvas-panel__action-btn--vertical" type="button" aria-pressed="false" aria-label="Enter fullscreen" title="Enter fullscreen">
-                            <svg id="fullscreenEnterIcon" class="canvas-panel__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <polyline points="5 9 5 5 9 5"></polyline>
-                                <polyline points="19 15 19 19 15 19"></polyline>
-                                <polyline points="15 5 19 5 19 9"></polyline>
-                                <polyline points="9 19 5 19 5 15"></polyline>
-                            </svg>
-                            <svg id="fullscreenExitIcon" class="canvas-panel__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
-                                <polyline points="9 5 5 5 5 9"></polyline>
-                                <polyline points="15 19 19 19 19 15"></polyline>
-                                <polyline points="19 9 19 5 15 5"></polyline>
-                                <polyline points="5 15 5 19 9 19"></polyline>
-                            </svg>
-                            <span id="fullscreenToggleLabel" class="visually-hidden">Enter fullscreen</span>
-                        </button>
-                    </div>
-                </nav>
-                <div class="canvas-wrapper" id="canvasWrapper">
-                    <canvas id="drawingCanvas"></canvas>
-                </div>
+            <div class="student-topbar__right">
+                <span class="student-topbar__session">Session <strong id="sessionCodeDisplay">&mdash;&mdash;&mdash;&mdash;</strong></span>
+                <span class="student-topbar__status student-topbar__status--pending" id="connectionStatus" role="status" aria-live="polite">
+                    <span class="status-indicator status-indicator--pending" id="connectionIndicator" aria-hidden="true"></span>
+                    <span id="connectionLabel">Connecting...</span>
+                </span>
             </div>
-        </section>
-    </main>
+        </header>
+        <main class="student-canvas" aria-label="Drawing surface">
+            <div class="student-canvas__surface">
+                <canvas id="drawingCanvas" aria-label="Drawing canvas"></canvas>
+            </div>
+        </main>
+    </div>
 </body>
 </html>
