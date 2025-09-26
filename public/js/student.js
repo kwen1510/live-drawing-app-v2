@@ -34,7 +34,7 @@ const DEFAULT_STROKE_COLOR = '#111827';
 const ERASER_BASE_WIDTH = DRAW_BASE_WIDTH * 5.2;
 
 const TOOL_TYPES = {
-    BRUSH: 'brush',
+    PEN: 'pen',
     ERASER: 'eraser'
 };
 
@@ -43,14 +43,15 @@ let channel;
 let channelReady = false;
 
 let storedPaths = [];
-let redoStack = [];
+let historyActions = [];
+let redoActions = [];
 let backgroundImageData = null;
 let backgroundImageElement = null;
 
 const toolState = {
     color: DEFAULT_STROKE_COLOR,
-    tool: TOOL_TYPES.BRUSH,
-    stylusOnly: false
+    tool: TOOL_TYPES.PEN,
+    stylusOnly: true
 };
 
 const drawingState = {
@@ -198,8 +199,8 @@ function initialiseColorPalette() {
             const color = button.dataset.color;
             if (typeof color === 'string' && color.trim().length > 0) {
                 toolState.color = color;
-                if (toolState.tool !== TOOL_TYPES.BRUSH) {
-                    toolState.tool = TOOL_TYPES.BRUSH;
+                if (toolState.tool !== TOOL_TYPES.PEN) {
+                    toolState.tool = TOOL_TYPES.PEN;
                     updateToolSelection();
                 }
                 updateColorSelection();
@@ -218,10 +219,10 @@ function initialiseToolButtons() {
     toolButtons.forEach((button) => {
         button.addEventListener('click', () => {
             const tool = button.dataset.tool;
-            if (tool === TOOL_TYPES.BRUSH || tool === TOOL_TYPES.ERASER) {
+            if (tool === TOOL_TYPES.PEN || tool === TOOL_TYPES.ERASER) {
                 toolState.tool = tool;
                 updateToolSelection();
-                if (tool === TOOL_TYPES.BRUSH) {
+                if (tool === TOOL_TYPES.PEN) {
                     updateColorSelection();
                 }
             }
@@ -234,13 +235,13 @@ function initialiseToolButtons() {
 function initialiseHistoryButtons() {
     if (undoButton) {
         undoButton.addEventListener('click', () => {
-            undoLastPath();
+            undoLastAction();
         });
     }
 
     if (redoButton) {
         redoButton.addEventListener('click', () => {
-            redoLastPath();
+            redoLastAction();
         });
     }
 
@@ -297,33 +298,73 @@ function updateStylusModeButton() {
 
 function updateHistoryButtons() {
     if (undoButton) {
-        undoButton.disabled = storedPaths.length === 0;
+        undoButton.disabled = historyActions.length === 0;
     }
 
     if (redoButton) {
-        redoButton.disabled = redoStack.length === 0;
+        redoButton.disabled = redoActions.length === 0;
     }
 }
 
-function undoLastPath() {
-    if (storedPaths.length === 0) {
+function undoLastAction() {
+    if (historyActions.length === 0) {
         return;
     }
 
-    const path = storedPaths.pop();
-    redoStack.push(path);
+    const action = historyActions.pop();
+
+    if (action.type === 'draw') {
+        const targetIndex = storedPaths.lastIndexOf(action.path);
+        let removed = null;
+        if (targetIndex !== -1) {
+            [removed] = storedPaths.splice(targetIndex, 1);
+        } else if (storedPaths.length > 0) {
+            removed = storedPaths.pop();
+        }
+
+        if (removed) {
+            redoActions.push({ type: 'draw', path: removed });
+        }
+    } else if (action.type === 'erase') {
+        if (action.path) {
+            const insertIndex = clamp(action.index, 0, storedPaths.length);
+            storedPaths.splice(insertIndex, 0, action.path);
+            redoActions.push({ type: 'erase', path: action.path, index: insertIndex });
+        }
+    }
+
     redrawCanvas();
     updateHistoryButtons();
     broadcastCanvas('update');
 }
 
-function redoLastPath() {
-    if (redoStack.length === 0) {
+function redoLastAction() {
+    if (redoActions.length === 0) {
         return;
     }
 
-    const path = redoStack.pop();
-    storedPaths.push(path);
+    const action = redoActions.pop();
+
+    if (action.type === 'draw') {
+        if (action.path) {
+            storedPaths.push(action.path);
+            historyActions.push({ type: 'draw', path: action.path });
+        }
+    } else if (action.type === 'erase') {
+        const targetIndex = storedPaths.indexOf(action.path);
+        if (targetIndex !== -1) {
+            const [removed] = storedPaths.splice(targetIndex, 1);
+            if (removed) {
+                historyActions.push({ type: 'erase', path: removed, index: targetIndex });
+            }
+        } else if (typeof action.index === 'number' && action.index >= 0 && action.index < storedPaths.length) {
+            const [removed] = storedPaths.splice(action.index, 1);
+            if (removed) {
+                historyActions.push({ type: 'erase', path: removed, index: action.index });
+            }
+        }
+    }
+
     redrawCanvas();
     updateHistoryButtons();
     broadcastCanvas('update');
@@ -452,6 +493,12 @@ function handlePointerDown(event) {
         return;
     }
 
+    if (toolState.tool === TOOL_TYPES.ERASER) {
+        event.preventDefault();
+        eraseStrokeAtPoint(getCanvasPoint(event));
+        return;
+    }
+
     event.preventDefault();
 
     if (typeof event.pointerId === 'number' && typeof canvas.setPointerCapture === 'function') {
@@ -477,6 +524,10 @@ function handlePointerMove(event) {
         return;
     }
 
+    if (toolState.tool === TOOL_TYPES.ERASER) {
+        return;
+    }
+
     if (typeof event.pointerId === 'number' && drawingState.pointerId !== null && event.pointerId !== drawingState.pointerId) {
         return;
     }
@@ -491,6 +542,10 @@ function handlePointerMove(event) {
 
 function handlePointerUp(event) {
     if (!canvas || !ctx || !drawingState.isDrawing) {
+        return;
+    }
+
+    if (toolState.tool === TOOL_TYPES.ERASER) {
         return;
     }
 
@@ -517,7 +572,7 @@ function handlePointerUp(event) {
 }
 
 function handlePointerCancel(event) {
-    if (!drawingState.isDrawing) {
+    if (!drawingState.isDrawing || toolState.tool === TOOL_TYPES.ERASER) {
         return;
     }
 
@@ -548,6 +603,110 @@ function addPointToStroke(rawPoint) {
     drawingState.buffer.push(point);
     drawingState.history.push(point);
     scheduleDraw();
+}
+
+function eraseStrokeAtPoint(point) {
+    if (!point || !canvas || !ctx) {
+        return;
+    }
+
+    const strokeIndex = findStrokeIndexAtPoint(point);
+    if (strokeIndex === -1) {
+        return;
+    }
+
+    const [removed] = storedPaths.splice(strokeIndex, 1);
+    if (!removed) {
+        return;
+    }
+
+    historyActions.push({ type: 'erase', path: removed, index: strokeIndex });
+    redoActions = [];
+    redrawCanvas();
+    updateHistoryButtons();
+    broadcastCanvas('update');
+}
+
+function findStrokeIndexAtPoint(point) {
+    for (let i = storedPaths.length - 1; i >= 0; i -= 1) {
+        const path = storedPaths[i];
+        if (!path || !Array.isArray(path.points)) {
+            continue;
+        }
+
+        const points = normaliseStoredPoints(path.points);
+        if (points.length === 0) {
+            continue;
+        }
+
+        const baseWidth = getStrokeBaseWidth(path);
+        const hitPadding = Math.max(baseWidth * 0.6, 6);
+
+        if (points.length === 1) {
+            const radius = clamp(baseWidth * (points[0].p + 0.05), baseWidth * 0.45, baseWidth * 1.6);
+            if (distanceBetweenPoints(point, points[0]) <= radius + hitPadding) {
+                return i;
+            }
+            continue;
+        }
+
+        for (let j = 1; j < points.length; j += 1) {
+            const previous = points[j - 1];
+            const current = points[j];
+            const strokeWidth = getStrokeWidthForSegment(baseWidth, previous, current);
+            const distance = distanceToSegment(point, previous, current);
+
+            if (distance <= strokeWidth * 0.6 + hitPadding) {
+                return i;
+            }
+        }
+    }
+
+    return -1;
+}
+
+function getStrokeBaseWidth(path) {
+    return typeof path.width === 'number' && path.width > 0 ? path.width : DRAW_BASE_WIDTH;
+}
+
+function getStrokeWidthForSegment(baseWidth, a, b) {
+    const averagePressure = ((a.p ?? 0.5) + (b.p ?? 0.5)) * 0.5;
+    return baseWidth * (averagePressure + 0.05);
+}
+
+function distanceBetweenPoints(a, b) {
+    if (!a || !b) {
+        return Number.POSITIVE_INFINITY;
+    }
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.hypot(dx, dy);
+}
+
+function distanceToSegment(point, start, end) {
+    if (!point || !start || !end) {
+        return Number.POSITIVE_INFINITY;
+    }
+
+    const vx = end.x - start.x;
+    const vy = end.y - start.y;
+    const wx = point.x - start.x;
+    const wy = point.y - start.y;
+
+    const segmentLengthSquared = vx * vx + vy * vy;
+    if (segmentLengthSquared === 0) {
+        return distanceBetweenPoints(point, start);
+    }
+
+    let t = (wx * vx + wy * vy) / segmentLengthSquared;
+    t = clamp(t, 0, 1);
+
+    const closestX = start.x + t * vx;
+    const closestY = start.y + t * vy;
+    const dx = point.x - closestX;
+    const dy = point.y - closestY;
+
+    return Math.hypot(dx, dy);
 }
 
 function finalizeStroke(cancelled) {
@@ -582,13 +741,15 @@ function finalizeStroke(cancelled) {
         .filter(Boolean);
 
     if (normalisedPoints.length > 0) {
-        storedPaths.push({
+        const storedPath = {
             color: stroke.color || DEFAULT_STROKE_COLOR,
             width: typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DRAW_BASE_WIDTH,
             erase: Boolean(stroke.erase),
             points: normalisedPoints
-        });
-        redoStack = [];
+        };
+        storedPaths.push(storedPath);
+        historyActions.push({ type: 'draw', path: storedPath });
+        redoActions = [];
         updateHistoryButtons();
         broadcastCanvas('update');
     }
@@ -659,7 +820,8 @@ function drawSmoothStroke(flush = false) {
 
 function clearCanvas({ broadcast = false } = {}) {
     storedPaths = [];
-    redoStack = [];
+    historyActions = [];
+    redoActions = [];
     drawingState.buffer = [];
     drawingState.history = [];
     if (drawingState.rafId !== null) {
@@ -1016,7 +1178,7 @@ function isSupportedPointer(event) {
 
     const type = typeof event.pointerType === 'string' ? event.pointerType.toLowerCase() : '';
     if (toolState.stylusOnly) {
-        return type === 'pen' || type === 'mouse';
+        return type === '' || type === 'pen' || type === 'mouse';
     }
 
     return type === '' || type === 'pen' || type === 'mouse' || type === 'touch';
