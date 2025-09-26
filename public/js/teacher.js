@@ -20,6 +20,89 @@ const studentModalCanvas = document.getElementById('studentModalCanvas');
 const studentModalTitle = document.getElementById('studentModalTitle');
 const studentModalSubtitle = document.getElementById('studentModalSubtitle');
 const studentModalClose = document.getElementById('studentModalClose');
+const openModesBtn = document.getElementById('openModesBtn');
+const modeModal = document.getElementById('modeModal');
+const modeModalClose = document.getElementById('modeModalClose');
+const PRESET_BACKGROUNDS = Object.freeze({
+    chinese: {
+        id: 'chinese',
+        label: 'Chinese words',
+        description: 'Green four-square grid with dotted guidelines.',
+        imageData: createSvgDataUrl(`
+            <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+                <rect x="48" y="48" width="928" height="928" rx="64" ry="64" fill="none" stroke="#8fbf68" stroke-width="32"/>
+                <rect x="80" y="80" width="864" height="864" rx="48" ry="48" fill="none" stroke="#cfe5b6" stroke-width="12"/>
+                <line x1="80" y1="512" x2="944" y2="512" stroke="#8fbf68" stroke-width="18" stroke-linecap="round" stroke-dasharray="2 26" stroke-opacity="0.9"/>
+                <line x1="512" y1="80" x2="512" y2="944" stroke="#8fbf68" stroke-width="18" stroke-linecap="round" stroke-dasharray="2 26" stroke-opacity="0.9"/>
+            </svg>
+        `),
+        previewAlt: 'Chinese words practice grid preview'
+    },
+    graphCross: {
+        id: 'graphCross',
+        label: 'Cross grid',
+        description: 'Centered axes with arrows pointing up and right.',
+        imageData: createSvgDataUrl(`
+            <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+                <defs>
+                    <marker id="arrow-head" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,1 L12,7 L0,13 Z" fill="#4b5563"/>
+                    </marker>
+                </defs>
+                <rect x="64" y="64" width="896" height="896" fill="#ffffff" stroke="#d1d5db" stroke-width="6"/>
+                <g stroke="#e2e8f0" stroke-width="2">
+                    <path d="M64 192 H960"/>
+                    <path d="M64 320 H960"/>
+                    <path d="M64 448 H960"/>
+                    <path d="M64 576 H960"/>
+                    <path d="M64 704 H960"/>
+                    <path d="M64 832 H960"/>
+                    <path d="M192 64 V960"/>
+                    <path d="M320 64 V960"/>
+                    <path d="M448 64 V960"/>
+                    <path d="M576 64 V960"/>
+                    <path d="M704 64 V960"/>
+                    <path d="M832 64 V960"/>
+                </g>
+                <line x1="80" y1="512" x2="944" y2="512" stroke="#4b5563" stroke-width="8" marker-end="url(#arrow-head)"/>
+                <line x1="512" y1="944" x2="512" y2="80" stroke="#4b5563" stroke-width="8" marker-end="url(#arrow-head)"/>
+            </svg>
+        `),
+        previewAlt: 'Graph grid with centered axes preview'
+    },
+    graphCorner: {
+        id: 'graphCorner',
+        label: 'Corner grid',
+        description: 'Axes start in the bottom-left corner with arrows on the positives.',
+        imageData: createSvgDataUrl(`
+            <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+                <defs>
+                    <marker id="arrow-head-corner" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,1 L12,7 L0,13 Z" fill="#334155"/>
+                    </marker>
+                </defs>
+                <rect x="64" y="64" width="896" height="896" fill="#ffffff" stroke="#d1d5db" stroke-width="6"/>
+                <g stroke="#e2e8f0" stroke-width="2">
+                    <path d="M64 832 H960"/>
+                    <path d="M64 704 H960"/>
+                    <path d="M64 576 H960"/>
+                    <path d="M64 448 H960"/>
+                    <path d="M64 320 H960"/>
+                    <path d="M64 192 H960"/>
+                    <path d="M192 64 V960"/>
+                    <path d="M320 64 V960"/>
+                    <path d="M448 64 V960"/>
+                    <path d="M576 64 V960"/>
+                    <path d="M704 64 V960"/>
+                    <path d="M832 64 V960"/>
+                </g>
+                <line x1="96" y1="896" x2="96" y2="112" stroke="#334155" stroke-width="10" marker-end="url(#arrow-head-corner)"/>
+                <line x1="96" y1="896" x2="912" y2="896" stroke="#334155" stroke-width="10" marker-end="url(#arrow-head-corner)"/>
+            </svg>
+        `),
+        previewAlt: 'Corner graph grid preview'
+    }
+});
 const BASE_CANVAS_WIDTH = 800;
 const BASE_CANVAS_HEIGHT = 600;
 
@@ -34,6 +117,11 @@ let activeBackgroundImage = null;
 let preferredGridColumns = 3;
 let activeModalStudent = null;
 let modalReturnFocus = null;
+let activePresetId = null;
+let modeOptionButtons = [];
+let modePreviewImages = [];
+let isModeModalOpen = false;
+let modeModalReturnFocus = null;
 const presenceKey = `teacher-${Math.random().toString(36).slice(2, 10)}`;
 const students = new Map();
 const GRID_STORAGE_KEY = 'teacher-grid-columns';
@@ -102,6 +190,7 @@ async function initialiseTeacherConsole() {
     setupClassroomControls();
     setupStudentGridControls();
     setupStudentModal();
+    setupModeModal();
     window.addEventListener('beforeunload', handleWindowUnload);
 }
 
@@ -430,6 +519,167 @@ function setupStudentModal() {
     });
 }
 
+function setupModeModal() {
+    if (!modeModal || !openModesBtn) {
+        return;
+    }
+
+    modeOptionButtons = Array.from(modeModal.querySelectorAll('[data-preset]'));
+    modePreviewImages = Array.from(modeModal.querySelectorAll('[data-preset-preview]'));
+
+    populatePresetPreviews();
+    updateModeSelections();
+
+    openModesBtn.setAttribute('aria-haspopup', 'dialog');
+    openModesBtn.setAttribute('aria-expanded', 'false');
+
+    openModesBtn.addEventListener('click', () => {
+        openModeModal(openModesBtn);
+    });
+
+    if (modeModalClose) {
+        modeModalClose.addEventListener('click', () => {
+            closeModeModal();
+        });
+    }
+
+    modeModal.addEventListener('click', (event) => {
+        if (event.target === modeModal) {
+            closeModeModal();
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && isModeModalOpen) {
+            closeModeModal();
+        }
+    });
+
+    modeOptionButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const presetId = button.dataset.preset;
+            if (presetId) {
+                applyPresetBackground(presetId);
+            }
+        });
+    });
+}
+
+function populatePresetPreviews() {
+    if (!Array.isArray(modePreviewImages)) {
+        modePreviewImages = [];
+    }
+
+    modePreviewImages.forEach((image) => {
+        if (!image) {
+            return;
+        }
+        const presetId = image.dataset.presetPreview;
+        const preset = getPresetById(presetId);
+        if (preset?.imageData) {
+            image.src = preset.imageData;
+        }
+    });
+}
+
+function openModeModal(triggerElement) {
+    if (!modeModal) {
+        return;
+    }
+
+    modeModalReturnFocus = triggerElement || null;
+    isModeModalOpen = true;
+    addBodyModalLock();
+    modeModal.removeAttribute('hidden');
+    modeModal.classList.add('app-modal--open');
+    modeModal.setAttribute('aria-hidden', 'false');
+    if (openModesBtn) {
+        openModesBtn.setAttribute('aria-expanded', 'true');
+    }
+
+    updateModeSelections();
+
+    const activeButton = Array.isArray(modeOptionButtons)
+        ? modeOptionButtons.find((button) => button?.dataset?.preset === activePresetId)
+        : null;
+    const focusTarget = activeButton || (modeOptionButtons?.[0]) || modeModalClose;
+    if (focusTarget && typeof focusTarget.focus === 'function') {
+        focusTarget.focus();
+    }
+}
+
+function closeModeModal() {
+    if (!modeModal) {
+        return;
+    }
+
+    modeModal.classList.remove('app-modal--open');
+    modeModal.setAttribute('hidden', '');
+    modeModal.setAttribute('aria-hidden', 'true');
+    isModeModalOpen = false;
+    removeBodyModalLock();
+    if (openModesBtn) {
+        openModesBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    if (modeModalReturnFocus && typeof modeModalReturnFocus.focus === 'function' && document.contains(modeModalReturnFocus)) {
+        modeModalReturnFocus.focus();
+    }
+    modeModalReturnFocus = null;
+}
+
+function applyPresetBackground(presetId) {
+    const preset = getPresetById(presetId);
+    if (!preset) {
+        return;
+    }
+
+    activePresetId = presetId;
+    selectedImageData = null;
+    selectedImageName = '';
+
+    if (referenceInput) {
+        referenceInput.value = '';
+    }
+
+    updateModeSelections();
+
+    updateReferencePreview(preset.imageData, preset.previewAlt || 'Selected mode preview');
+
+    if (referenceFileName) {
+        referenceFileName.textContent = `Mode: ${preset.label}`;
+    }
+
+    if (pushImageBtn) {
+        pushImageBtn.disabled = true;
+        pushImageBtn.textContent = 'Push to students';
+    }
+
+    if (clearImageBtn) {
+        clearImageBtn.hidden = false;
+    }
+
+    activeBackgroundImage = preset.imageData;
+    safeSend('set_background', { imageData: preset.imageData });
+    updateReferenceStatus(`${preset.label} mode sent to your students.`);
+    closeModeModal();
+}
+
+function updateModeSelections() {
+    if (!Array.isArray(modeOptionButtons)) {
+        modeOptionButtons = [];
+    }
+
+    modeOptionButtons.forEach((button) => {
+        if (!button) {
+            return;
+        }
+        const isActive = button.dataset.preset === activePresetId;
+        button.classList.toggle('mode-option--active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
+}
+
 function openStudentModal(username, triggerElement) {
     if (!studentModal || !studentModalCanvas) {
         return;
@@ -456,7 +706,7 @@ function openStudentModal(username, triggerElement) {
     student.previewCanvas = studentModalCanvas;
     student.previewCtx = studentModalCanvas.getContext('2d');
 
-    document.body.classList.add('modal-open');
+    addBodyModalLock();
     studentModal.removeAttribute('hidden');
     studentModal.classList.add('student-modal--open');
     studentModal.setAttribute('aria-hidden', 'false');
@@ -491,7 +741,7 @@ function closeStudentModal() {
     studentModal.classList.remove('student-modal--open');
     studentModal.setAttribute('hidden', '');
     studentModal.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('modal-open');
+    removeBodyModalLock();
 
     if (modalReturnFocus && typeof modalReturnFocus.focus === 'function' && document.contains(modalReturnFocus)) {
         modalReturnFocus.focus();
@@ -617,7 +867,14 @@ function handleReferenceSelection(event) {
         }
 
         selectedImageData = reader.result;
-        updateReferencePreview(selectedImageData);
+        activePresetId = null;
+        updateModeSelections();
+        updateReferencePreview(
+            selectedImageData,
+            selectedImageName
+                ? `Preview of ${selectedImageName}`
+                : 'Selected reference preview'
+        );
 
         if (referenceFileName) {
             referenceFileName.textContent = selectedImageName
@@ -666,6 +923,9 @@ function clearReferenceImage(resetActive = false) {
         activeBackgroundImage = null;
     }
 
+    activePresetId = null;
+    updateModeSelections();
+
     if (referenceInput) {
         referenceInput.value = '';
     }
@@ -688,19 +948,21 @@ function clearReferenceImage(resetActive = false) {
     updateReferenceStatus('Choose an image to send to your class.');
 }
 
-function updateReferencePreview(imageData) {
+function updateReferencePreview(imageData, altText = 'Selected reference preview') {
     if (!referencePreview || !referencePreviewImage) {
         return;
     }
 
     if (!imageData) {
         referencePreviewImage.removeAttribute('src');
+        referencePreviewImage.alt = '';
         referencePreview.hidden = true;
         return;
     }
 
     referencePreview.hidden = false;
     referencePreviewImage.src = imageData;
+    referencePreviewImage.alt = altText;
 }
 
 function updateReferenceStatus(message) {
@@ -740,7 +1002,7 @@ function handleNextQuestion() {
         }
     }
 
-    activeBackgroundImage = null;
+    clearReferenceImage(true);
     safeSend('next_question', { initiatedAt: Date.now() });
     clearAllStudentCanvases();
     updateReferenceStatus('Student canvases cleared. Share a new image when you\'re ready.');
@@ -1028,6 +1290,39 @@ function loadImage(dataUrl) {
         img.onerror = reject;
         img.src = dataUrl;
     });
+}
+
+function getPresetById(presetId) {
+    if (!presetId) {
+        return null;
+    }
+    return PRESET_BACKGROUNDS[presetId] || null;
+}
+
+function createSvgDataUrl(svgContent) {
+    if (typeof svgContent !== 'string' || svgContent.trim().length === 0) {
+        return '';
+    }
+
+    const trimmed = svgContent.replace(/>\s+</g, '><').trim();
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trimmed)}`;
+}
+
+function addBodyModalLock() {
+    if (typeof document === 'undefined' || !document.body) {
+        return;
+    }
+    document.body.classList.add('modal-open');
+}
+
+function removeBodyModalLock() {
+    if (typeof document === 'undefined' || !document.body) {
+        return;
+    }
+
+    if (!activeModalStudent && !isModeModalOpen) {
+        document.body.classList.remove('modal-open');
+    }
 }
 
 function fallbackCopy(text) {
