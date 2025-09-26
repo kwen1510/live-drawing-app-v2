@@ -21,7 +21,7 @@ if (sessionCodeDisplay) {
 const canvas = document.getElementById('drawingCanvas');
 const canvasPanel = document.getElementById('canvasPanel');
 const canvasWrapper = document.getElementById('canvasWrapper');
-const canvasTopbar = document.getElementById('canvasTopbar');
+const canvasToolbar = document.getElementById('canvasToolbar');
 const fullscreenToggle = document.getElementById('fullscreenToggle');
 const fullscreenEnterIcon = document.getElementById('fullscreenEnterIcon');
 const fullscreenExitIcon = document.getElementById('fullscreenExitIcon');
@@ -39,6 +39,9 @@ const actionButtons = {
     redo: Array.from(document.querySelectorAll('[data-action="redo"]')),
     clear: Array.from(document.querySelectorAll('[data-action="clear"]'))
 };
+
+document.addEventListener('selectstart', preventUnwantedSelection, { passive: false });
+document.addEventListener('dragstart', preventUnwantedSelection, { passive: false });
 canvas.style.width = '100%';
 canvas.style.height = 'auto';
 canvas.width = BASE_CANVAS_WIDTH;
@@ -63,6 +66,9 @@ let backgroundImageElement = null;
 let stylusMode = true;
 let activePointerId = null;
 let viewportZoomLocked = false;
+let fullscreenExitRequestedByButton = false;
+let reentryScheduled = false;
+let hasEverEnteredFullscreen = false;
 
 const supabaseUrl = window.SUPABASE_URL;
 const supabaseAnonKey = window.SUPABASE_ANON_KEY;
@@ -378,12 +384,6 @@ function setupFullscreenControls() {
         toggleFullscreen();
     });
 
-    if (canvasWrapper) {
-        canvasWrapper.addEventListener('dblclick', () => {
-            toggleFullscreen();
-        });
-    }
-
     const fullscreenEvents = ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'];
     fullscreenEvents.forEach((eventName) => {
         document.addEventListener(eventName, updateFullscreenUI);
@@ -394,6 +394,7 @@ function setupFullscreenControls() {
 
 function toggleFullscreen() {
     if (isCanvasFullscreen()) {
+        fullscreenExitRequestedByButton = true;
         exitFullscreen();
     } else {
         enterFullscreen();
@@ -410,7 +411,12 @@ function enterFullscreen() {
 
     if (request) {
         try {
-            request.call(canvasPanel);
+            const result = request.call(canvasPanel);
+            if (result && typeof result.then === 'function') {
+                result.catch((error) => {
+                    console.error('Failed to enter fullscreen', error);
+                });
+            }
         } catch (error) {
             console.error('Failed to enter fullscreen', error);
         }
@@ -425,9 +431,16 @@ function exitFullscreen() {
 
     if (exit) {
         try {
-            exit.call(document);
+            const result = exit.call(document);
+            if (result && typeof result.then === 'function') {
+                result.catch((error) => {
+                    console.error('Failed to exit fullscreen', error);
+                    fullscreenExitRequestedByButton = false;
+                });
+            }
         } catch (error) {
             console.error('Failed to exit fullscreen', error);
+            fullscreenExitRequestedByButton = false;
         }
     }
 }
@@ -443,9 +456,8 @@ function updateFullscreenUI() {
         canvasPanel.classList.toggle('canvas-panel--fullscreen', isFullscreen);
     }
 
-    if (canvasTopbar) {
-        canvasTopbar.setAttribute('aria-hidden', 'false');
-        canvasTopbar.dataset.fullscreen = String(isFullscreen);
+    if (canvasToolbar) {
+        canvasToolbar.dataset.fullscreen = String(isFullscreen);
     }
 
     fullscreenToggle.setAttribute('aria-pressed', String(isFullscreen));
@@ -462,6 +474,19 @@ function updateFullscreenUI() {
 
     if (fullscreenExitIcon) {
         fullscreenExitIcon.hidden = !isFullscreen;
+    }
+
+    if (isFullscreen) {
+        hasEverEnteredFullscreen = true;
+    } else {
+        if (hasEverEnteredFullscreen && !fullscreenExitRequestedByButton && canvasPanel && !reentryScheduled) {
+            reentryScheduled = true;
+            requestAnimationFrame(() => {
+                reentryScheduled = false;
+                enterFullscreen();
+            });
+        }
+        fullscreenExitRequestedByButton = false;
     }
 }
 
@@ -1005,6 +1030,22 @@ function lockViewportZoomForIOS() {
 
 function clonePaths(source) {
     return JSON.parse(JSON.stringify(source));
+}
+
+function preventUnwantedSelection(event) {
+    const target = event.target;
+
+    if (!target) {
+        return;
+    }
+
+    if (target.closest('input, textarea, [contenteditable="true"], [data-allow-selection]')) {
+        return;
+    }
+
+    if (event?.preventDefault) {
+        event.preventDefault();
+    }
 }
 
 function broadcastCanvas(reason = 'update') {
