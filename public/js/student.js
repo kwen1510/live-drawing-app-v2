@@ -338,6 +338,8 @@ function updateFullscreenUI() {
     }
 
     fullscreenToggle.setAttribute('aria-pressed', String(isFullscreen));
+    fullscreenToggle.setAttribute('aria-label', isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen');
+    fullscreenToggle.title = isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen';
 
     if (fullscreenToggleLabel) {
         fullscreenToggleLabel.textContent = isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen';
