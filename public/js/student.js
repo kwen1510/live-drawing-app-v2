@@ -314,7 +314,10 @@ function updateStylusModeButton() {
     stylusButton.classList.toggle('is-active', toolState.stylusOnly);
     stylusButton.setAttribute('aria-pressed', toolState.stylusOnly ? 'true' : 'false');
     stylusButton.textContent = toolState.stylusOnly ? 'Stylus mode (pen only)' : 'Stylus mode';
-    stylusButton.setAttribute('title', toolState.stylusOnly ? 'Stylus and mouse input only' : 'Allow pen, touch and mouse input');
+    stylusButton.setAttribute(
+        'title',
+        toolState.stylusOnly ? 'Stylus and mouse input only' : 'Allow pen, touch and mouse input'
+    );
 }
 
 function updateHistoryButtons() {
