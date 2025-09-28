@@ -20,6 +20,9 @@ const studentShellWrap = document.querySelector('.student-shell__wrap');
 const studentTopbar = document.querySelector('.student-topbar');
 const studentCanvasContainer = document.querySelector('.student-canvas');
 const studentCanvasSurface = document.querySelector('.student-canvas__surface');
+const waitingOverlay = document.getElementById('waitingOverlay');
+const waitingLabel = document.getElementById('waitingLabel');
+const waitingSubtitle = document.getElementById('waitingSubtitle');
 const connectionLabel = document.getElementById('connectionLabel');
 const connectionIndicator = document.getElementById('connectionIndicator');
 const statusPill = document.getElementById('connectionStatus');
@@ -44,6 +47,8 @@ const BRUSH_SIZE_STEP = 0.2;
 const DEFAULT_STROKE_COLOR = '#111827';
 const ERASER_SIZE_MULTIPLIER = 5.2;
 const BRUSH_SIZE_STORAGE_KEY = 'student-brush-size';
+const WAITING_TITLE_DEFAULT = 'Waiting for your teacher to start';
+const WAITING_SUBTITLE_DEFAULT = 'Keep your stylus ready. The next question will appear here.';
 
 const RELIABLE_SEQUENCE_STORAGE_KEY = sessionCode
     ? `student-${sessionCode}-last-sequence`
@@ -118,6 +123,9 @@ const canvasDisplayState = {
     letterboxed: false
 };
 
+let isQuestionActive = false;
+let isWaitingForTeacher = true;
+
 if (welcomeHeading) {
     welcomeHeading.textContent = username ? `Hi, ${username}!` : 'Student canvas';
 }
@@ -126,6 +134,7 @@ if (sessionCodeDisplay) {
     sessionCodeDisplay.textContent = sessionCode || '----';
 }
 
+setWaitingState(true);
 setupViewportSizing();
 initialiseCanvas();
 setupToolbox();
@@ -138,6 +147,38 @@ function hasActiveBackgroundContent() {
             || backgroundImageElement
             || backgroundVectorDefinition
     );
+}
+
+function setWaitingState(waiting, options = {}) {
+    const { title, subtitle } = options;
+
+    if (!waitingOverlay) {
+        isWaitingForTeacher = waiting;
+        isQuestionActive = !waiting;
+        return;
+    }
+
+    if (waiting) {
+        waitingOverlay.classList.add('student-waiting--visible');
+        if (waitingLabel) {
+            waitingLabel.textContent = title || WAITING_TITLE_DEFAULT;
+        }
+        if (waitingSubtitle) {
+            waitingSubtitle.textContent = subtitle || WAITING_SUBTITLE_DEFAULT;
+        }
+        isWaitingForTeacher = true;
+        isQuestionActive = false;
+    } else {
+        waitingOverlay.classList.remove('student-waiting--visible');
+        if (title && waitingLabel) {
+            waitingLabel.textContent = title;
+        }
+        if (subtitle && waitingSubtitle) {
+            waitingSubtitle.textContent = subtitle;
+        }
+        isWaitingForTeacher = false;
+        isQuestionActive = true;
+    }
 }
 
 function updateCanvasLetterboxing() {
@@ -731,14 +772,20 @@ function wireChannelEvents() {
             entries.some((entry) => entry.role === 'teacher'));
 
         if (teacherOnline) {
-            setStatusBadge('Connected to your teacher', 'success');
+            if (isWaitingForTeacher) {
+                setStatusBadge('Waiting for your teacher to start', 'pending');
+            }
         } else {
             setStatusBadge('Waiting for your teacher to join...', 'pending');
         }
     });
 
     channel.on('broadcast', { event: 'teacher_ready' }, () => {
-        setStatusBadge('Teacher connected', 'success');
+        if (isWaitingForTeacher) {
+            setStatusBadge('Waiting for your teacher to start', 'pending');
+        } else {
+            setStatusBadge('Teacher connected', 'success');
+        }
         broadcastCanvas('sync');
         requestSessionState();
     });
@@ -816,12 +863,12 @@ function handleTeacherNextQuestionEvent(payload = {}) {
         return;
     }
 
-    const { questionNumber } = payload || {};
+    const { questionNumber, mode, background } = payload || {};
     const nextNumber = typeof questionNumber === 'number' && Number.isFinite(questionNumber)
         ? questionNumber
         : reliableState.questionNumber + 1;
 
-    handleNextQuestionFromTeacher(nextNumber);
+    handleNextQuestionFromTeacher(nextNumber, mode || null, background || null);
 }
 
 function processSessionState(payload = {}) {
@@ -832,9 +879,11 @@ function processSessionState(payload = {}) {
     }
 
     let snapshotSequence = null;
+    let snapshotActive = null;
+    let snapshotMode = null;
 
     if (snapshot) {
-        const { questionNumber, lastSequence } = snapshot;
+        const { questionNumber, lastSequence, isQuestionActive, currentMode } = snapshot;
         if (typeof questionNumber === 'number' && Number.isFinite(questionNumber)) {
             if (questionNumber > reliableState.questionNumber) {
                 updateQuestionNumber(questionNumber);
@@ -844,7 +893,17 @@ function processSessionState(payload = {}) {
         if (typeof lastSequence === 'number' && Number.isFinite(lastSequence)) {
             snapshotSequence = lastSequence;
         }
+
+        if (typeof isQuestionActive === 'boolean') {
+            snapshotActive = isQuestionActive;
+        }
+
+        if (currentMode && typeof currentMode === 'object') {
+            snapshotMode = currentMode;
+        }
     }
+
+    let processedQuestionEvent = false;
 
     if (Array.isArray(events) && events.length > 0) {
         const sortedEvents = [...events].sort((a, b) => {
@@ -854,8 +913,27 @@ function processSessionState(payload = {}) {
         });
 
         sortedEvents.forEach((entry) => {
-            applyReliableEvent(entry);
+            const handled = applyReliableEvent(entry);
+            if (handled && entry.event === 'next_question') {
+                processedQuestionEvent = true;
+            }
         });
+    }
+
+    if (!processedQuestionEvent && snapshotActive !== null) {
+        if (!snapshotActive) {
+            setWaitingState(true);
+            setStatusBadge('Waiting for your teacher to start', 'pending');
+        } else {
+            setWaitingState(false);
+            const label = typeof snapshotMode?.label === 'string' && snapshotMode.label.trim().length > 0
+                ? snapshotMode.label.trim()
+                : null;
+            const statusText = label
+                ? `Teacher started "${label}"`
+                : 'Teacher started the next question';
+            setStatusBadge(statusText, 'success');
+        }
     }
 
     if (snapshotSequence !== null) {
@@ -865,20 +943,26 @@ function processSessionState(payload = {}) {
 
 function applyReliableEvent(entry) {
     if (!entry || typeof entry.id !== 'number' || !entry.event) {
-        return;
+        return false;
     }
 
     if (entry.id <= reliableState.lastSequence) {
-        return;
+        return false;
     }
 
     const payload = entry.payload ? { ...entry.payload, __seq: entry.id } : { __seq: entry.id };
 
     if (entry.event === 'set_background') {
         handleTeacherBackgroundEvent(payload);
-    } else if (entry.event === 'next_question') {
-        handleTeacherNextQuestionEvent(payload);
+        return false;
     }
+
+    if (entry.event === 'next_question') {
+        handleTeacherNextQuestionEvent(payload);
+        return true;
+    }
+
+    return false;
 }
 
 function announceStudent() {
@@ -887,6 +971,10 @@ function announceStudent() {
 
 function handlePointerDown(event) {
     if (!canvas || !ctx || !isSupportedPointer(event)) {
+        return;
+    }
+
+    if (isWaitingForTeacher) {
         return;
     }
 
@@ -920,6 +1008,10 @@ function handlePointerMove(event) {
         return;
     }
 
+    if (isWaitingForTeacher) {
+        return;
+    }
+
     if (toolState.tool === TOOL_TYPES.ERASER) {
         handleEraserMove(event);
         return;
@@ -943,6 +1035,10 @@ function handlePointerMove(event) {
 
 function handlePointerUp(event) {
     if (!canvas || !ctx) {
+        return;
+    }
+
+    if (isWaitingForTeacher) {
         return;
     }
 
@@ -979,6 +1075,10 @@ function handlePointerUp(event) {
 
 function handlePointerCancel(event) {
     if (!canvas || !ctx) {
+        return;
+    }
+
+    if (isWaitingForTeacher) {
         return;
     }
 
@@ -2091,7 +2191,7 @@ function removeBackgroundImage() {
     updateCanvasLetterboxing();
 }
 
-function handleNextQuestionFromTeacher(nextQuestionNumber = null) {
+function handleNextQuestionFromTeacher(nextQuestionNumber = null, mode = null, background = null) {
     if (typeof nextQuestionNumber === 'number' && Number.isFinite(nextQuestionNumber)) {
         if (nextQuestionNumber > reliableState.questionNumber) {
             updateQuestionNumber(nextQuestionNumber);
@@ -2105,8 +2205,27 @@ function handleNextQuestionFromTeacher(nextQuestionNumber = null) {
     clearCanvas({ broadcast: false });
     clearBackgroundVectors();
     removeBackgroundImage();
+
+    const vectorData = background?.vector ?? background?.vectorElements ?? null;
+    if (vectorData) {
+        applyBackgroundVectors(vectorData);
+    }
+
+    const imageData = background?.imageData;
+    if (typeof imageData === 'string' && imageData.length > 0) {
+        applyBackgroundImage(imageData);
+    }
+
     broadcastCanvas('clear');
-    setStatusBadge('Teacher started the next question', 'pending');
+    setWaitingState(false);
+
+    const label = typeof mode?.label === 'string' && mode.label.trim().length > 0
+        ? mode.label.trim()
+        : null;
+    const statusText = label
+        ? `Teacher started "${label}"`
+        : 'Teacher started the next question';
+    setStatusBadge(statusText, 'success');
 }
 
 function getCanvasPoint(event) {
