@@ -24,14 +24,26 @@ const connectionLabel = document.getElementById('connectionLabel');
 const connectionIndicator = document.getElementById('connectionIndicator');
 const statusPill = document.getElementById('connectionStatus');
 
+const brushSizeGroup = document.querySelector('.student-toolbar__group--brush');
+const brushSizeButton = document.getElementById('brushSizeButton');
+const brushSizePopover = document.getElementById('brushSizePopover');
+const brushSizeSlider = document.getElementById('brushSizeSlider');
+const brushSizeIndicator = document.getElementById('brushSizeIndicator');
+const brushSizePreviewDot = document.getElementById('brushSizePreviewDot');
+const brushSizeValueLabel = document.getElementById('brushSizeValueLabel');
+
 const ctx = canvas?.getContext('2d', { alpha: false, desynchronized: true });
 
 const BASE_CANVAS_WIDTH = 800;
 const BASE_CANVAS_HEIGHT = 600;
 const MAX_DPR = 3;
-const DRAW_BASE_WIDTH = 2.2;
+const DEFAULT_BRUSH_SIZE = 2.2;
+const MIN_BRUSH_SIZE = 1;
+const MAX_BRUSH_SIZE_SETTING = 12;
+const BRUSH_SIZE_STEP = 0.2;
 const DEFAULT_STROKE_COLOR = '#111827';
-const ERASER_BASE_WIDTH = DRAW_BASE_WIDTH * 5.2;
+const ERASER_SIZE_MULTIPLIER = 5.2;
+const BRUSH_SIZE_STORAGE_KEY = 'student-brush-size';
 
 const RELIABLE_SEQUENCE_STORAGE_KEY = sessionCode
     ? `student-${sessionCode}-last-sequence`
@@ -63,10 +75,17 @@ const reliableState = {
 
 let currentQuestionNumber = reliableState.questionNumber;
 
+const initialBrushSize = clamp(
+    readNumericLocal(BRUSH_SIZE_STORAGE_KEY, DEFAULT_BRUSH_SIZE),
+    MIN_BRUSH_SIZE,
+    MAX_BRUSH_SIZE_SETTING
+);
+
 const toolState = {
     color: DEFAULT_STROKE_COLOR,
     tool: TOOL_TYPES.PEN,
-    stylusOnly: true
+    stylusOnly: true,
+    brushSize: initialBrushSize
 };
 
 const drawingState = {
@@ -84,6 +103,9 @@ const eraserState = {
     lastPoint: null,
     currentAction: null
 };
+
+let isBrushPopoverOpen = false;
+let brushPopoverReturnFocus = null;
 
 const canvasSize = {
     width: 1,
@@ -199,6 +221,7 @@ function setupToolbox() {
     initialiseToolButtons();
     initialiseHistoryButtons();
     initialiseStylusButton();
+    initialiseBrushSizeControls();
 }
 
 function setupClearButton() {
@@ -283,6 +306,40 @@ function initialiseStylusButton() {
     updateStylusModeButton();
 }
 
+function initialiseBrushSizeControls() {
+    if (!brushSizeButton || !brushSizeSlider || !brushSizePopover) {
+        return;
+    }
+
+    brushSizeButton.setAttribute('aria-expanded', 'false');
+
+    brushSizeButton.addEventListener('click', () => {
+        if (isBrushPopoverOpen) {
+            closeBrushSizePopover();
+        } else {
+            openBrushSizePopover();
+        }
+    });
+
+    if (brushSizeSlider) {
+        brushSizeSlider.min = String(MIN_BRUSH_SIZE);
+        brushSizeSlider.max = String(MAX_BRUSH_SIZE_SETTING);
+        brushSizeSlider.step = String(BRUSH_SIZE_STEP);
+        brushSizeSlider.setAttribute('aria-valuemin', formatBrushSizeValue(MIN_BRUSH_SIZE));
+        brushSizeSlider.setAttribute('aria-valuemax', formatBrushSizeValue(MAX_BRUSH_SIZE_SETTING));
+        brushSizeSlider.addEventListener('input', handleBrushSizeInput);
+        brushSizeSlider.addEventListener('change', handleBrushSizeChange);
+    }
+
+    if (brushSizePopover) {
+        brushSizePopover.addEventListener('keydown', handleBrushSizePopoverKeydown);
+    }
+
+    document.addEventListener('keydown', handleGlobalBrushSizeKeydown);
+
+    updateBrushSizeUI(toolState.brushSize);
+}
+
 function updateColorSelection() {
     if (!colorButtons) {
         return;
@@ -293,6 +350,8 @@ function updateColorSelection() {
         button.classList.toggle('is-active', isActive);
         button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
+
+    updateBrushSizeUI();
 }
 
 function updateToolSelection() {
@@ -305,6 +364,12 @@ function updateToolSelection() {
         button.classList.toggle('is-active', isActive);
         button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
+
+    if (toolState.tool === TOOL_TYPES.ERASER) {
+        closeBrushSizePopover();
+    }
+
+    updateBrushSizeUI();
 }
 
 function updateStylusModeButton() {
@@ -319,6 +384,139 @@ function updateStylusModeButton() {
         'title',
         toolState.stylusOnly ? 'Stylus and mouse input only' : 'Allow pen, touch and mouse input'
     );
+}
+
+function openBrushSizePopover() {
+    if (!brushSizePopover || !brushSizeButton || isBrushPopoverOpen) {
+        return;
+    }
+
+    isBrushPopoverOpen = true;
+    brushPopoverReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    brushSizePopover.hidden = false;
+    brushSizeButton.setAttribute('aria-expanded', 'true');
+    document.addEventListener('pointerdown', handleBrushSizeOutsidePointer, true);
+    updateBrushSizeUI();
+
+    if (brushSizeSlider && typeof brushSizeSlider.focus === 'function') {
+        requestAnimationFrame(() => {
+            brushSizeSlider.focus();
+        });
+    }
+}
+
+function closeBrushSizePopover() {
+    if (!brushSizePopover || !brushSizeButton || !isBrushPopoverOpen) {
+        return;
+    }
+
+    isBrushPopoverOpen = false;
+    brushSizePopover.hidden = true;
+    brushSizeButton.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('pointerdown', handleBrushSizeOutsidePointer, true);
+
+    if (brushPopoverReturnFocus && document.contains(brushPopoverReturnFocus)) {
+        try {
+            brushPopoverReturnFocus.focus();
+        } catch (_error) {
+            // Ignore focus errors
+        }
+    }
+    brushPopoverReturnFocus = null;
+}
+
+function handleBrushSizeOutsidePointer(event) {
+    if (!isBrushPopoverOpen || !brushSizeGroup) {
+        return;
+    }
+
+    if (brushSizeGroup.contains(event.target)) {
+        return;
+    }
+
+    closeBrushSizePopover();
+}
+
+function handleBrushSizeInput(event) {
+    const value = Number(event.target?.value);
+    if (!Number.isFinite(value)) {
+        return;
+    }
+
+    applyBrushSize(value);
+}
+
+function handleBrushSizeChange(event) {
+    const value = Number(event.target?.value);
+    if (!Number.isFinite(value)) {
+        return;
+    }
+
+    applyBrushSize(value, { persist: true });
+}
+
+function handleBrushSizePopoverKeydown(event) {
+    if (event.key === 'Escape' && isBrushPopoverOpen) {
+        event.preventDefault();
+        closeBrushSizePopover();
+    }
+}
+
+function handleGlobalBrushSizeKeydown(event) {
+    if (event.key === 'Escape' && isBrushPopoverOpen) {
+        closeBrushSizePopover();
+    }
+}
+
+function applyBrushSize(value, options = {}) {
+    const clamped = clampBrushSize(value);
+    toolState.brushSize = clamped;
+
+    if (drawingState.currentStroke && !drawingState.currentStroke.erase) {
+        drawingState.currentStroke.width = clamped;
+    }
+
+    updateBrushSizeUI(clamped);
+
+    if (options.persist) {
+        writeNumericLocal(BRUSH_SIZE_STORAGE_KEY, clamped);
+    }
+}
+
+function updateBrushSizeUI(size) {
+    const brushSize = clampBrushSize(typeof size === 'number' ? size : toolState.brushSize);
+
+    if (brushSizeSlider) {
+        const currentValue = Number(brushSizeSlider.value);
+        if (!Number.isFinite(currentValue) || Math.abs(currentValue - brushSize) > 0.05) {
+            brushSizeSlider.value = formatBrushSizeValue(brushSize);
+        }
+        brushSizeSlider.setAttribute('aria-valuenow', formatBrushSizeValue(brushSize));
+        brushSizeSlider.setAttribute('aria-valuetext', `${formatBrushSizeValue(brushSize)} pixels`);
+    }
+
+    if (brushSizeValueLabel) {
+        brushSizeValueLabel.textContent = `${formatBrushSizeValue(brushSize)} px`;
+    }
+
+    const previewSize = getBrushPreviewSize(brushSize);
+    const previewColor = getBrushPreviewColor();
+
+    if (brushSizePreviewDot) {
+        brushSizePreviewDot.style.setProperty('--brush-preview-size', `${previewSize}px`);
+        brushSizePreviewDot.style.background = previewColor;
+    }
+
+    if (brushSizeIndicator) {
+        const indicatorSize = Math.max(8, Math.round(previewSize * 0.65));
+        brushSizeIndicator.style.setProperty('--brush-preview-size', `${indicatorSize}px`);
+        brushSizeIndicator.style.background = previewColor;
+        brushSizeIndicator.classList.toggle('is-eraser', toolState.tool === TOOL_TYPES.ERASER);
+    }
+
+    if (brushSizeButton) {
+        brushSizeButton.setAttribute('aria-expanded', isBrushPopoverOpen ? 'true' : 'false');
+    }
 }
 
 function updateHistoryButtons() {
@@ -942,7 +1140,8 @@ function eraseAlongPath(startPoint, endPoint) {
     }
 
     const distance = distanceBetweenPoints(startPoint, endPoint);
-    const stepSize = Math.max(ERASER_BASE_WIDTH * 0.45, 6);
+    const eraserWidth = getEraserBaseWidth();
+    const stepSize = Math.max(eraserWidth * 0.45, 6);
     const steps = Math.max(1, Math.ceil(distance / stepSize));
 
     for (let i = 1; i <= steps; i += 1) {
@@ -994,7 +1193,7 @@ function findStrokeIndexAtPoint(point) {
 }
 
 function getStrokeBaseWidth(path) {
-    return typeof path.width === 'number' && path.width > 0 ? path.width : DRAW_BASE_WIDTH;
+    return typeof path.width === 'number' && path.width > 0 ? path.width : DEFAULT_BRUSH_SIZE;
 }
 
 function getStrokeWidthForSegment(baseWidth, a, b) {
@@ -1071,7 +1270,7 @@ function finalizeStroke(cancelled) {
     if (normalisedPoints.length > 0) {
         const storedPath = {
             color: stroke.color || DEFAULT_STROKE_COLOR,
-            width: typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DRAW_BASE_WIDTH,
+            width: typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DEFAULT_BRUSH_SIZE,
             erase: Boolean(stroke.erase),
             points: normalisedPoints
         };
@@ -1111,7 +1310,7 @@ function drawSmoothStroke(flush = false) {
     }
 
     const stroke = drawingState.currentStroke || getCurrentStrokeSettings();
-    const baseWidth = typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DRAW_BASE_WIDTH;
+    const baseWidth = typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DEFAULT_BRUSH_SIZE;
     const strokeColor = stroke.erase ? '#000000' : (stroke.color || DEFAULT_STROKE_COLOR);
     ctx.save();
     ctx.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over';
@@ -1786,7 +1985,7 @@ function renderStoredPath(path) {
 
     const stroke = {
         color: path.color || DEFAULT_STROKE_COLOR,
-        width: typeof path.width === 'number' && path.width > 0 ? path.width : DRAW_BASE_WIDTH,
+        width: typeof path.width === 'number' && path.width > 0 ? path.width : DEFAULT_BRUSH_SIZE,
         erase: Boolean(path.erase)
     };
 
@@ -1888,14 +2087,14 @@ function getCurrentStrokeSettings() {
     if (toolState.tool === TOOL_TYPES.ERASER) {
         return {
             color: '#000000',
-            width: ERASER_BASE_WIDTH,
+            width: getEraserBaseWidth(),
             erase: true
         };
     }
 
     return {
         color: toolState.color || DEFAULT_STROKE_COLOR,
-        width: DRAW_BASE_WIDTH,
+        width: getBrushBaseWidth(),
         erase: false
     };
 }
@@ -1905,7 +2104,7 @@ function drawDot(context, point, stroke) {
         return;
     }
 
-    const baseWidth = typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DRAW_BASE_WIDTH;
+    const baseWidth = typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DEFAULT_BRUSH_SIZE;
     const radius = clamp(baseWidth * (point.p + 0.05), baseWidth * 0.45, baseWidth * 1.6);
 
     context.save();
@@ -1915,6 +2114,38 @@ function drawDot(context, point, stroke) {
     context.fillStyle = stroke.erase ? '#000000' : (stroke.color || DEFAULT_STROKE_COLOR);
     context.fill();
     context.restore();
+}
+
+function formatBrushSizeValue(value) {
+    return clampBrushSize(value).toFixed(1);
+}
+
+function getBrushPreviewSize(value) {
+    const brushSize = clampBrushSize(value);
+    return Math.round((brushSize - MIN_BRUSH_SIZE) / (MAX_BRUSH_SIZE_SETTING - MIN_BRUSH_SIZE) * 28 + 10);
+}
+
+function getBrushPreviewColor() {
+    if (toolState.tool === TOOL_TYPES.ERASER) {
+        return '#ffffff';
+    }
+    return toolState.color || DEFAULT_STROKE_COLOR;
+}
+
+function clampBrushSize(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return DEFAULT_BRUSH_SIZE;
+    }
+    return clamp(value, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE_SETTING);
+}
+
+function getBrushBaseWidth() {
+    return clampBrushSize(toolState.brushSize ?? DEFAULT_BRUSH_SIZE);
+}
+
+function getEraserBaseWidth() {
+    const base = getBrushBaseWidth() * ERASER_SIZE_MULTIPLIER;
+    return clamp(base, MIN_BRUSH_SIZE * ERASER_SIZE_MULTIPLIER, MAX_BRUSH_SIZE_SETTING * ERASER_SIZE_MULTIPLIER);
 }
 
 function getMidpoint(a, b) {
@@ -2033,6 +2264,32 @@ function safeSend(event, payload = {}) {
     channel.send({ type: 'broadcast', event, payload }).catch((error) => {
         console.error(`Supabase event "${event}" failed`, error);
     });
+}
+
+function readNumericLocal(key, fallback = DEFAULT_BRUSH_SIZE) {
+    try {
+        const stored = localStorage.getItem(key);
+        if (stored === null || stored === undefined) {
+            return fallback;
+        }
+
+        const value = Number(stored);
+        return Number.isFinite(value) ? value : fallback;
+    } catch (_error) {
+        return fallback;
+    }
+}
+
+function writeNumericLocal(key, value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return;
+    }
+
+    try {
+        localStorage.setItem(key, String(value));
+    } catch (_error) {
+        // Ignore storage write failures (e.g., private browsing)
+    }
 }
 
 function readNumericSession(key, fallback = 0) {

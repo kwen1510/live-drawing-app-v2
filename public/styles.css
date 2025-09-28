@@ -844,7 +844,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .student-card__canvas {
-    background: var(--surface-soft);
+    background: #0f172a;
     border-radius: 18px;
     padding: 0.75rem;
     display: grid;
@@ -854,8 +854,11 @@ input[type="range"]::-moz-range-thumb {
 
 .student-card__canvas canvas {
     width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
     border-radius: 12px;
     background: #fff;
+    box-shadow: inset 0 0 0 1px var(--border), 0 0 0 4px rgba(15, 23, 42, 0.65);
 }
 
 .student-modal {
@@ -933,7 +936,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .student-modal__canvas {
-    background: var(--surface-soft);
+    background: #0f172a;
     border-radius: 22px;
     padding: clamp(0.75rem, 2vw, 1.5rem);
     box-shadow: inset 0 0 0 1px var(--border);
@@ -950,8 +953,9 @@ input[type="range"]::-moz-range-thumb {
     display: block;
     border-radius: 16px;
     background: #fff;
-    box-shadow: inset 0 0 0 1px var(--border);
+    box-shadow: inset 0 0 0 1px var(--border), 0 0 0 6px rgba(15, 23, 42, 0.85);
     max-height: 100%;
+    aspect-ratio: 4 / 3;
 }
 
 .app-modal {
@@ -2191,6 +2195,142 @@ body.student-shell * {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+}
+
+.student-toolbar__group--brush {
+    position: relative;
+}
+
+.student-toolbar__button--popover {
+    gap: 10px;
+}
+
+.brush-size-indicator {
+    --brush-preview-size: 14px;
+    width: var(--brush-preview-size);
+    height: var(--brush-preview-size);
+    border-radius: 999px;
+    background: var(--text-strong);
+    border: 2px solid rgba(255, 255, 255, 0.82);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
+    display: inline-flex;
+    flex-shrink: 0;
+    transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.brush-size-indicator.is-eraser {
+    background: #ffffff;
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.35);
+}
+
+.brush-size-popover {
+    position: absolute;
+    top: calc(100% + 12px);
+    left: 0;
+    min-width: 220px;
+    background: var(--surface);
+    border-radius: 18px;
+    box-shadow: var(--shadow-panel);
+    padding: 16px 18px;
+    display: grid;
+    gap: 14px;
+    z-index: 30;
+}
+
+.brush-size-popover::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: 28px;
+    width: 16px;
+    height: 16px;
+    background: var(--surface);
+    transform: rotate(45deg);
+    box-shadow: -2px -2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.brush-size-popover[hidden] {
+    display: none;
+}
+
+.brush-size-popover__header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.brush-size-popover__title {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.brush-size-popover__value {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.brush-size-popover__control input[type="range"] {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+.brush-size-popover__control input[type="range"]:focus {
+    outline: none;
+}
+
+.brush-size-popover__control input[type="range"]::-webkit-slider-runnable-track {
+    background: var(--range-track);
+    border-radius: 999px;
+    height: 6px;
+}
+
+.brush-size-popover__control input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--surface);
+    background: var(--primary);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.18);
+    margin-top: -6px;
+}
+
+.brush-size-popover__control input[type="range"]::-moz-range-track {
+    background: var(--range-track);
+    border-radius: 999px;
+    height: 6px;
+}
+
+.brush-size-popover__control input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--surface);
+    background: var(--primary);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.18);
+}
+
+.brush-size-preview {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.brush-size-preview__dot {
+    --brush-preview-size: 16px;
+    width: var(--brush-preview-size);
+    height: var(--brush-preview-size);
+    border-radius: 50%;
+    background: var(--text-strong);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.35);
 }
 
 .student-toolbar__button:focus-visible {
