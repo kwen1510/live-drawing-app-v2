@@ -45,6 +45,9 @@ const MIN_BRUSH_SIZE = 1;
 const MAX_BRUSH_SIZE_SETTING = 12;
 const BRUSH_SIZE_STEP = 0.2;
 const DEFAULT_STROKE_COLOR = '#111827';
+const TEACHER_ANNOTATION_DEFAULT_COLOR = '#ef4444';
+const TEACHER_ANNOTATION_MIN_WIDTH = 1;
+const TEACHER_ANNOTATION_MAX_WIDTH = 28;
 const ERASER_SIZE_MULTIPLIER = 5.2;
 const BRUSH_SIZE_STORAGE_KEY = 'student-brush-size';
 const WAITING_TITLE_DEFAULT = 'Waiting for your teacher to start';
@@ -72,6 +75,7 @@ let redoActions = [];
 let backgroundImageData = null;
 let backgroundImageElement = null;
 let backgroundVectorDefinition = null;
+let teacherAnnotations = [];
 
 const reliableState = {
     lastSequence: readNumericSession(RELIABLE_SEQUENCE_STORAGE_KEY, 0),
@@ -804,6 +808,10 @@ function wireChannelEvents() {
         handleTeacherBackgroundEvent(payload);
     });
 
+    channel.on('broadcast', { event: 'teacher_annotations' }, ({ payload }) => {
+        handleTeacherAnnotationsEvent(payload);
+    });
+
     channel.on('broadcast', { event: 'next_question' }, ({ payload }) => {
         handleTeacherNextQuestionEvent(payload);
     });
@@ -855,6 +863,26 @@ function handleTeacherBackgroundEvent(payload = {}) {
     } else {
         removeBackgroundImage();
     }
+}
+
+function handleTeacherAnnotationsEvent(payload = {}) {
+    const { target, annotations, reason } = payload || {};
+
+    if (target && target !== username) {
+        return;
+    }
+
+    if (Array.isArray(annotations) && annotations.length > 0) {
+        teacherAnnotations = normaliseTeacherAnnotationPaths(annotations);
+    } else {
+        teacherAnnotations = [];
+    }
+
+    if (reason === 'clear') {
+        teacherAnnotations = [];
+    }
+
+    redrawCanvas();
 }
 
 function handleTeacherNextQuestionEvent(payload = {}) {
@@ -1557,6 +1585,14 @@ function redrawCanvas() {
         renderStoredPath(path);
     });
 
+    if (teacherAnnotations.length > 0) {
+        ctx.save();
+        teacherAnnotations.forEach((path) => {
+            renderTeacherAnnotationPath(path);
+        });
+        ctx.restore();
+    }
+
     ctx.globalCompositeOperation = 'source-over';
 }
 
@@ -2120,12 +2156,24 @@ function renderStoredPath(path) {
     }
 
     const stroke = {
-        color: path.color || DEFAULT_STROKE_COLOR,
+        color: typeof path.color === 'string' && path.color.trim().length > 0
+            ? path.color
+            : DEFAULT_STROKE_COLOR,
         width: typeof path.width === 'number' && path.width > 0 ? path.width : DEFAULT_BRUSH_SIZE,
-        erase: Boolean(path.erase)
+        erase: Boolean(path.erase),
+        opacity: typeof path.opacity === 'number' && Number.isFinite(path.opacity)
+            ? clamp(path.opacity, 0.05, 1)
+            : 1,
+        composite: Boolean(path.erase)
+            ? 'destination-out'
+            : (typeof path.composite === 'string' && path.composite.trim().length > 0
+                ? path.composite
+                : 'source-over')
     };
 
     ctx.save();
+    ctx.globalAlpha = stroke.opacity;
+    ctx.globalCompositeOperation = stroke.composite;
     if (points.length === 1) {
         drawDot(ctx, points[0], stroke);
         ctx.restore();
@@ -2133,7 +2181,6 @@ function renderStoredPath(path) {
     }
 
     ctx.strokeStyle = stroke.erase ? '#000000' : stroke.color;
-    ctx.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -2153,6 +2200,31 @@ function renderStoredPath(path) {
 
     drawDot(ctx, points[points.length - 1], stroke);
     ctx.restore();
+}
+
+function renderTeacherAnnotationPath(path) {
+    if (!ctx || !path) {
+        return;
+    }
+
+    renderStoredPath({
+        color: typeof path.color === 'string' && path.color.trim().length > 0
+            ? path.color
+            : TEACHER_ANNOTATION_DEFAULT_COLOR,
+        width: typeof path.width === 'number' && Number.isFinite(path.width)
+            ? clamp(path.width, TEACHER_ANNOTATION_MIN_WIDTH, TEACHER_ANNOTATION_MAX_WIDTH)
+            : TEACHER_ANNOTATION_MIN_WIDTH,
+        erase: Boolean(path.erase),
+        opacity: typeof path.opacity === 'number' && Number.isFinite(path.opacity)
+            ? clamp(path.opacity, 0, 1)
+            : 1,
+        composite: typeof path.composite === 'string' && path.composite.trim().length > 0
+            ? path.composite
+            : (path.erase ? 'destination-out' : 'source-over'),
+        points: Array.isArray(path.points)
+            ? path.points
+            : []
+    });
 }
 
 function applyBackgroundImage(imageData) {
@@ -2265,7 +2337,12 @@ function drawDot(context, point, stroke) {
     const radius = clamp(baseWidth * 0.5, baseWidth * 0.45, baseWidth * 0.8);
 
     context.save();
-    context.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over';
+    const opacity = typeof stroke.opacity === 'number' && Number.isFinite(stroke.opacity)
+        ? clamp(stroke.opacity, 0.05, 1)
+        : 1;
+    context.globalAlpha = opacity;
+    context.globalCompositeOperation = stroke.composite
+        || (stroke.erase ? 'destination-out' : 'source-over');
     context.beginPath();
     context.arc(point.x, point.y, radius, 0, Math.PI * 2);
     context.fillStyle = stroke.erase ? '#000000' : (stroke.color || DEFAULT_STROKE_COLOR);
@@ -2368,6 +2445,41 @@ function clonePaths(source) {
             ? path.points.map((point) => (Array.isArray(point) ? [...point] : { ...point }))
             : []
     }));
+}
+
+function normaliseTeacherAnnotationPaths(source) {
+    if (!Array.isArray(source)) {
+        return [];
+    }
+
+    return source.map((path) => {
+        const width = typeof path?.width === 'number' && Number.isFinite(path.width)
+            ? clamp(path.width, TEACHER_ANNOTATION_MIN_WIDTH, TEACHER_ANNOTATION_MAX_WIDTH)
+            : TEACHER_ANNOTATION_MIN_WIDTH;
+
+        const points = Array.isArray(path?.points)
+            ? path.points.map((point) => (Array.isArray(point) ? [...point] : { ...point }))
+            : [];
+
+        const erase = Boolean(path?.erase);
+        const opacity = typeof path?.opacity === 'number' && Number.isFinite(path.opacity)
+            ? clamp(path.opacity, 0, 1)
+            : (erase ? 1 : 1);
+        const composite = typeof path?.composite === 'string' && path.composite.trim().length > 0
+            ? path.composite
+            : (erase ? 'destination-out' : 'source-over');
+
+        return {
+            color: typeof path?.color === 'string' && path.color.trim().length > 0
+                ? path.color
+                : TEACHER_ANNOTATION_DEFAULT_COLOR,
+            width,
+            erase,
+            opacity,
+            composite,
+            points
+        };
+    }).filter((entry) => entry.points.length > 0);
 }
 
 function trackReliableSequence(payload = {}) {
