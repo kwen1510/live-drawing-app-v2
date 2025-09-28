@@ -1220,8 +1220,9 @@ function drawBackgroundImage(image) {
         drawWidth = imageRatio * displayHeight;
         offsetX = (displayWidth - drawWidth) / 2;
     } else {
-        drawHeight = displayWidth / imageRatio;
-        offsetY = (displayHeight - drawHeight) / 2;
+        drawHeight = displayHeight;
+        drawWidth = displayHeight * imageRatio;
+        offsetX = (displayWidth - drawWidth) / 2;
     }
 
     ctx.save();
