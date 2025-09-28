@@ -130,6 +130,10 @@ const RELIABLE_EVENT_LIMIT = 64;
 let reliableSequence = 0;
 const reliableEventLog = [];
 
+const CHANNEL_RECONNECT_DELAY = 2000;
+let channelReconnectTimer = null;
+let isReconnecting = false;
+
 const sessionState = {
     questionNumber: 1,
     lastQuestionStartedAt: Date.now(),
@@ -154,6 +158,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 async function initialiseTeacherConsole() {
     setStatusBadge('Connecting to Supabase...', 'pending');
+    if (copyBtn) {
+        copyBtn.disabled = true;
+    }
+
     supabase = createClient(supabaseUrl, supabaseAnonKey, {
         auth: { persistSession: false }
     });
@@ -167,39 +175,7 @@ async function initialiseTeacherConsole() {
 
     renderQrCode(sessionUrl);
 
-    channel = supabase.channel(`session-${sessionCode}`, {
-        config: {
-            broadcast: { self: false },
-            presence: { key: presenceKey }
-        }
-    });
-
-    wireChannelEvents();
-
-    channel.subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-            channelReady = true;
-            setStatusBadge('Session live', 'success');
-            connectionStatus.textContent = 'Waiting for students to join...';
-            copyBtn.disabled = false;
-
-            const { error } = await channel.track({ role: 'teacher', sessionCode });
-            if (error) {
-                console.error('Failed to track teacher presence', error);
-            }
-
-            safeSend('teacher_ready', { sessionCode });
-            sendSessionSnapshot();
-            startSyncLoop();
-        } else if (status === 'CHANNEL_ERROR') {
-            setStatusBadge('Realtime connection error', 'error');
-        } else if (status === 'TIMED_OUT') {
-            setStatusBadge('Supabase connection timed out', 'error');
-        } else if (status === 'CLOSED') {
-            setStatusBadge('Realtime channel closed', 'error');
-            stopSyncLoop();
-        }
-    });
+    initialiseRealtimeChannel();
 
     setupCopyButton();
     setupClassroomControls();
@@ -223,6 +199,151 @@ function clonePayload(payload) {
     } catch (_error) {
         return payload;
     }
+}
+
+function initialiseRealtimeChannel() {
+    if (!supabase) {
+        return;
+    }
+
+    if (channelReconnectTimer !== null) {
+        clearTimeout(channelReconnectTimer);
+        channelReconnectTimer = null;
+    }
+
+    channelReady = false;
+    channel = createRealtimeChannel();
+    wireChannelEvents();
+    subscribeToRealtimeChannel();
+}
+
+function createRealtimeChannel() {
+    return supabase.channel(`session-${sessionCode}`, {
+        config: {
+            broadcast: { self: false },
+            presence: { key: presenceKey }
+        }
+    });
+}
+
+function subscribeToRealtimeChannel() {
+    if (!channel) {
+        return;
+    }
+
+    try {
+        const subscription = channel.subscribe(onChannelStatusChange);
+        if (subscription && typeof subscription.then === 'function') {
+            subscription.catch((error) => {
+                console.error('Realtime subscription failed', error);
+                handleChannelDisconnection('Realtime connection error', 'subscribe_failed');
+            });
+        }
+    } catch (error) {
+        console.error('Realtime subscription threw an error', error);
+        handleChannelDisconnection('Realtime connection error', 'subscribe_exception');
+    }
+}
+
+async function onChannelStatusChange(status) {
+    if (status === 'SUBSCRIBED') {
+        if (channelReconnectTimer !== null) {
+            clearTimeout(channelReconnectTimer);
+            channelReconnectTimer = null;
+        }
+
+        isReconnecting = false;
+        channelReady = true;
+        setStatusBadge('Session live', 'success');
+        if (connectionStatus) {
+            connectionStatus.textContent = 'Waiting for students to join...';
+        }
+        if (copyBtn) {
+            copyBtn.disabled = false;
+        }
+
+        try {
+            const { error } = await channel.track({ role: 'teacher', sessionCode });
+            if (error) {
+                console.error('Failed to track teacher presence', error);
+            }
+        } catch (error) {
+            console.error('Failed to track teacher presence', error);
+        }
+
+        safeSend('teacher_ready', { sessionCode });
+        sendSessionSnapshot();
+        startSyncLoop();
+        return;
+    }
+
+    if (status === 'CHANNEL_ERROR') {
+        handleChannelDisconnection('Realtime connection error', 'channel_error');
+        return;
+    }
+
+    if (status === 'TIMED_OUT') {
+        handleChannelDisconnection('Supabase connection timed out', 'timed_out');
+        return;
+    }
+
+    if (status === 'CLOSED') {
+        handleChannelDisconnection('Realtime channel closed', 'closed');
+    }
+}
+
+function handleChannelDisconnection(message, reason) {
+    if (reason === 'closed' && isReconnecting) {
+        return;
+    }
+
+    isReconnecting = true;
+    channelReady = false;
+    stopSyncLoop();
+    if (copyBtn) {
+        copyBtn.disabled = true;
+    }
+    setStatusBadge(message, 'error');
+    if (connectionStatus) {
+        connectionStatus.textContent = 'Reconnecting to Supabase...';
+    }
+    scheduleChannelReconnect(reason);
+}
+
+function scheduleChannelReconnect(reason) {
+    if (channelReconnectTimer !== null || !supabase) {
+        return;
+    }
+
+    console.warn('Realtime channel interrupted, attempting to reconnect', reason);
+    channelReconnectTimer = setTimeout(() => {
+        channelReconnectTimer = null;
+        attemptChannelReconnect();
+    }, CHANNEL_RECONNECT_DELAY);
+}
+
+function attemptChannelReconnect() {
+    if (!supabase) {
+        return;
+    }
+
+    if (channel && typeof channel.unsubscribe === 'function') {
+        try {
+            const result = channel.unsubscribe();
+            if (result && typeof result.then === 'function') {
+                result.catch((error) => {
+                    console.warn('Failed to unsubscribe from realtime channel cleanly', error);
+                });
+            }
+        } catch (error) {
+            console.warn('Failed to unsubscribe from realtime channel', error);
+        }
+    }
+
+    channelReady = false;
+    channel = createRealtimeChannel();
+    wireChannelEvents();
+    subscribeToRealtimeChannel();
 }
 
 function sendReliableBroadcast(event, payload = {}, options = {}) {
@@ -320,6 +441,10 @@ function sendSessionSnapshot(targetUsername, afterSequence = 0) {
 }
 
 function wireChannelEvents() {
+    if (!channel) {
+        return;
+    }
+
     channel.on('presence', { event: 'sync' }, handlePresenceSync);
 
     channel.on('broadcast', { event: 'student_ready' }, ({ payload }) => {
@@ -1498,6 +1623,11 @@ function showCopyFeedback(message) {
 function handleWindowUnload() {
     safeSend('session_closed', { reason: 'teacher_left' });
     stopSyncLoop();
+    if (channelReconnectTimer !== null) {
+        clearTimeout(channelReconnectTimer);
+        channelReconnectTimer = null;
+    }
+    isReconnecting = true;
     channel?.unsubscribe();
 }
 
