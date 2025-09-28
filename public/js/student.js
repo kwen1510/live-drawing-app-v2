@@ -26,6 +26,7 @@ const waitingSubtitle = document.getElementById('waitingSubtitle');
 const connectionLabel = document.getElementById('connectionLabel');
 const connectionIndicator = document.getElementById('connectionIndicator');
 const statusPill = document.getElementById('connectionStatus');
+const teacherReviewBadge = document.getElementById('teacherReviewBadge');
 
 const brushSizeGroup = document.querySelector('.student-toolbar__group--brush');
 const brushSizeButton = document.getElementById('brushSizeButton');
@@ -117,6 +118,21 @@ const eraserState = {
     lastPoint: null,
     currentAction: null
 };
+
+function setTeacherReviewBadge(isVisible) {
+    if (!teacherReviewBadge) {
+        return;
+    }
+    teacherReviewBadge.hidden = !isVisible;
+}
+
+function showTeacherReviewBadge() {
+    setTeacherReviewBadge(true);
+}
+
+function hideTeacherReviewBadge() {
+    setTeacherReviewBadge(false);
+}
 
 let isBrushPopoverOpen = false;
 let brushPopoverReturnFocus = null;
@@ -886,7 +902,7 @@ function handleTeacherBackgroundEvent(payload = {}) {
 }
 
 function handleTeacherAnnotationsEvent(payload = {}) {
-    const { target, annotations, reason } = payload || {};
+    const { target, annotations, reason, reviewed } = payload || {};
 
     if (target && target !== username) {
         return;
@@ -903,9 +919,16 @@ function handleTeacherAnnotationsEvent(payload = {}) {
     }
 
     redrawCanvas();
+
+    if (typeof reviewed === 'boolean') {
+        setTeacherReviewBadge(reviewed);
+    } else {
+        setTeacherReviewBadge(Array.isArray(annotations) && annotations.length > 0);
+    }
 }
 
 function handleTeacherNextQuestionEvent(payload = {}) {
+    hideTeacherReviewBadge();
     const isNew = trackReliableSequence(payload);
     if (!isNew) {
         return;
@@ -1027,6 +1050,7 @@ function handlePointerDown(event) {
     }
 
     event.preventDefault();
+    hideTeacherReviewBadge();
 
     if (toolState.tool === TOOL_TYPES.ERASER) {
         startErasing(event);
@@ -1532,6 +1556,7 @@ function drawSmoothStroke(flush = false) {
 }
 
 function clearCanvas({ broadcast = false } = {}) {
+    hideTeacherReviewBadge();
     storedPaths = [];
     historyActions = [];
     redoActions = [];
