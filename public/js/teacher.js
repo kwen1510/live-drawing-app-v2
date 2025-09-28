@@ -36,8 +36,7 @@ const PRESET_BACKGROUNDS = Object.freeze({
                 <line x1="512" y1="80" x2="512" y2="944" stroke="#8fbf68" stroke-width="18" stroke-linecap="round" stroke-dasharray="2 26" stroke-opacity="0.9"/>
             </svg>
         `),
-        previewAlt: 'Chinese words practice grid preview',
-        vector: createChineseVectorData()
+        previewAlt: 'Chinese words practice grid preview'
     },
     graphCross: {
         id: 'graphCross',
@@ -69,8 +68,7 @@ const PRESET_BACKGROUNDS = Object.freeze({
                 <line x1="512" y1="944" x2="512" y2="80" stroke="#4b5563" stroke-width="8" marker-end="url(#arrow-head)"/>
             </svg>
         `),
-        previewAlt: 'Graph grid with centered axes preview',
-        vector: createGraphCrossVectorData()
+        previewAlt: 'Graph grid with centered axes preview'
     },
     graphCorner: {
         id: 'graphCorner',
@@ -102,8 +100,7 @@ const PRESET_BACKGROUNDS = Object.freeze({
                 <line x1="96" y1="896" x2="912" y2="896" stroke="#334155" stroke-width="10" marker-end="url(#arrow-head-corner)"/>
             </svg>
         `),
-        previewAlt: 'Corner graph grid preview',
-        vector: createGraphCornerVectorData()
+        previewAlt: 'Corner graph grid preview'
     }
 });
 const BASE_CANVAS_WIDTH = 800;
@@ -117,7 +114,6 @@ let syncInterval = null;
 let selectedImageData = null;
 let selectedImageName = '';
 let activeBackgroundImage = null;
-let activeBackgroundVectors = null;
 let preferredGridColumns = 3;
 let activeModalStudent = null;
 let modalReturnFocus = null;
@@ -391,7 +387,7 @@ function sendReliableBroadcast(event, payload = {}, options = {}) {
 }
 
 function recordBackgroundChange(imageData, meta = {}) {
-    sessionState.backgroundActive = Boolean(imageData) || Boolean(activeBackgroundVectors);
+    sessionState.backgroundActive = Boolean(imageData);
     sessionState.backgroundVersion += 1;
     sessionState.backgroundName = imageData
         ? (meta.name || meta.label || null)
@@ -596,7 +592,6 @@ function ensureStudentCard(username) {
         lastActivity: Date.now(),
         backgroundImageData: null,
         backgroundImageElement: null,
-        backgroundVectors: null,
         paths: [],
         previewCanvas: null,
         previewCtx: null
@@ -611,7 +606,6 @@ function updateStudentCanvas(username, canvasState) {
     if (!student || !canvasState) return;
 
     student.paths = Array.isArray(canvasState.paths) ? canvasState.paths : [];
-    student.backgroundVectors = normaliseBackgroundVectorDefinition(canvasState.backgroundVectors);
 
     const markSynced = () => {
         setStudentSyncState(username, true);
@@ -932,12 +926,10 @@ function applyPresetBackground(presetId) {
     }
 
     activeBackgroundImage = preset.imageData;
-    activeBackgroundVectors = cloneBackgroundVectorDefinition(preset.vector);
     recordBackgroundChange(preset.imageData, { name: preset.label, label: preset.label });
     sendReliableBroadcast('set_background', {
         imageData: preset.imageData,
-        presetId: preset.id || null,
-        vector: cloneBackgroundVectorDefinition(activeBackgroundVectors)
+        presetId: preset.id || null
     });
     updateReferenceStatus(`${preset.label} mode sent to your students.`);
     closeModeModal();
@@ -1187,14 +1179,12 @@ function handlePushImageToStudents() {
         return;
     }
 
-    activeBackgroundImage = selectedImageData;
-    activeBackgroundVectors = null;
     recordBackgroundChange(selectedImageData, { name: selectedImageName || 'Uploaded image' });
     sendReliableBroadcast('set_background', {
         imageData: selectedImageData,
-        fileName: selectedImageName || null,
-        vector: null
+        fileName: selectedImageName || null
     });
+    activeBackgroundImage = selectedImageData;
     updateReferenceStatus('Image sent to your students.');
     showPushFeedback('Sent!');
 }
@@ -1205,7 +1195,6 @@ function clearReferenceImage(resetActive = false) {
 
     if (resetActive) {
         activeBackgroundImage = null;
-        activeBackgroundVectors = null;
         recordBackgroundChange(null, { name: null });
     }
 
@@ -1270,14 +1259,13 @@ function showPushFeedback(message) {
 }
 
 function sendBackgroundToStudent(username) {
-    if (!username || (!activeBackgroundImage && !activeBackgroundVectors)) {
+    if (!activeBackgroundImage || !username) {
         return;
     }
 
     safeSend('set_background', {
-        imageData: activeBackgroundImage || null,
-        target: username,
-        vector: cloneBackgroundVectorDefinition(activeBackgroundVectors)
+        imageData: activeBackgroundImage,
+        target: username
     });
 }
 
@@ -1304,7 +1292,6 @@ function clearAllStudentCanvases() {
     students.forEach((student, username) => {
         student.backgroundImageData = null;
         student.backgroundImageElement = null;
-        student.backgroundVectors = null;
         student.paths = [];
         drawStudentCanvas(student);
         student.updatedAt.textContent = 'Awaiting activity';
@@ -1373,29 +1360,47 @@ function drawStudentCanvas(student) {
         return;
     }
 
-    const render = () => {
+    const resetTargets = () => {
         targets.forEach(({ ctx, canvas }) => {
             resetCanvas(ctx, canvas);
-            drawStudentBackground(ctx, student.backgroundImageElement, student.backgroundVectors);
+        });
+    };
+
+    const renderWithBackground = () => {
+        targets.forEach(({ ctx }) => {
+            drawStudentBackground(ctx, student.backgroundImageElement);
             renderStudentPaths(ctx, student.paths);
         });
     };
 
-    render();
+    const renderWithoutBackground = () => {
+        targets.forEach(({ ctx }) => {
+            renderStudentPaths(ctx, student.paths);
+        });
+    };
 
-    if (student.backgroundImageElement && !student.backgroundImageElement.complete) {
-        student.backgroundImageElement.onload = () => {
-            student.backgroundImageElement.onload = null;
-            student.backgroundImageElement.onerror = null;
-            render();
-        };
-        student.backgroundImageElement.onerror = () => {
-            student.backgroundImageElement.onload = null;
-            student.backgroundImageElement.onerror = null;
-            student.backgroundImageElement = null;
-            render();
-        };
+    resetTargets();
+
+    if (student.backgroundImageElement) {
+        if (student.backgroundImageElement.complete) {
+            renderWithBackground();
+        } else {
+            student.backgroundImageElement.onload = () => {
+                resetTargets();
+                renderWithBackground();
+                student.backgroundImageElement.onload = null;
+            };
+            student.backgroundImageElement.onerror = () => {
+                resetTargets();
+                renderWithoutBackground();
+                student.backgroundImageElement.onload = null;
+                student.backgroundImageElement.onerror = null;
+            };
+        }
+        return;
     }
+
+    renderWithoutBackground();
 }
 
 function getStudentTargets(student) {
@@ -1537,608 +1542,25 @@ function studentClamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
 
-function drawStudentBackground(ctx, image, vectorDefinition) {
-    if (!ctx) {
-        return;
-    }
+function drawStudentBackground(ctx, image) {
+    const canvasRatio = BASE_CANVAS_WIDTH / BASE_CANVAS_HEIGHT;
+    const imageRatio = image.width / image.height;
 
-    if (image && image.width && image.height) {
-        const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
-            image.width,
-            image.height,
-            BASE_CANVAS_WIDTH,
-            BASE_CANVAS_HEIGHT
-        );
+    let drawWidth = BASE_CANVAS_WIDTH;
+    let drawHeight = BASE_CANVAS_HEIGHT;
 
-        ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
-    }
-
-    if (vectorDefinition) {
-        drawVectorDefinition(ctx, vectorDefinition, BASE_CANVAS_WIDTH, BASE_CANVAS_HEIGHT);
-    }
-}
-
-function drawVectorDefinition(ctx, definition, targetWidth, targetHeight) {
-    const normalised = normaliseBackgroundVectorDefinition(definition);
-    if (!normalised) {
-        return;
-    }
-
-    const { width, height, elements } = normalised;
-    if (!width || !height || elements.length === 0) {
-        return;
-    }
-
-    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
-        width,
-        height,
-        targetWidth,
-        targetHeight
-    );
-
-    const scaleX = drawWidth / width;
-    const scaleY = drawHeight / height;
-
-    ctx.save();
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(scaleX, scaleY);
-
-    elements.forEach((element) => {
-        ctx.save();
-
-        const opacity = typeof element.opacity === 'number'
-            ? clampNumber(element.opacity, 0, 1)
-            : 1;
-        ctx.globalAlpha = opacity;
-
-        if (Array.isArray(element.dash) && element.dash.length > 0) {
-            ctx.setLineDash(element.dash);
-        } else {
-            ctx.setLineDash([]);
-        }
-
-        switch (element.type) {
-            case 'line':
-                ctx.beginPath();
-                ctx.lineCap = element.cap || 'butt';
-                ctx.lineJoin = element.join || 'miter';
-                ctx.lineWidth = element.strokeWidth || 1;
-                ctx.strokeStyle = element.stroke || '#000000';
-                ctx.moveTo(element.x1, element.y1);
-                ctx.lineTo(element.x2, element.y2);
-                ctx.stroke();
-                break;
-            case 'arrow':
-                ctx.beginPath();
-                ctx.lineCap = element.cap || 'butt';
-                ctx.lineJoin = element.join || 'miter';
-                ctx.lineWidth = element.strokeWidth || 1;
-                ctx.strokeStyle = element.stroke || '#000000';
-                ctx.moveTo(element.x1, element.y1);
-                ctx.lineTo(element.x2, element.y2);
-                ctx.stroke();
-                drawArrowHead(ctx, element);
-                break;
-            case 'rect':
-            case 'roundedRect': {
-                drawRoundedRectPath(ctx, element.x, element.y, element.width, element.height, element.radius || 0);
-                if (element.fill) {
-                    ctx.fillStyle = element.fill;
-                    ctx.fill();
-                }
-                if (element.stroke && element.strokeWidth > 0) {
-                    ctx.strokeStyle = element.stroke;
-                    ctx.lineWidth = element.strokeWidth;
-                    ctx.lineJoin = element.join || 'miter';
-                    ctx.stroke();
-                }
-                break;
-            }
-            default:
-                break;
-        }
-
-        ctx.restore();
-    });
-
-    ctx.restore();
-}
-
-function calculateContainDimensions(sourceWidth, sourceHeight, targetWidth, targetHeight) {
-    if (!sourceWidth || !sourceHeight) {
-        return { drawWidth: 0, drawHeight: 0, offsetX: 0, offsetY: 0 };
-    }
-
-    const sourceRatio = sourceWidth / sourceHeight;
-    const targetRatio = targetWidth / targetHeight;
-
-    let drawWidth = targetWidth;
-    let drawHeight = targetHeight;
-
-    if (sourceRatio > targetRatio) {
-        drawHeight = targetWidth / sourceRatio;
+    if (imageRatio > canvasRatio) {
+        drawWidth = BASE_CANVAS_WIDTH;
+        drawHeight = BASE_CANVAS_WIDTH / imageRatio;
     } else {
-        drawWidth = targetHeight * sourceRatio;
+        drawHeight = BASE_CANVAS_HEIGHT;
+        drawWidth = BASE_CANVAS_HEIGHT * imageRatio;
     }
 
-    const offsetX = (targetWidth - drawWidth) / 2;
-    const offsetY = (targetHeight - drawHeight) / 2;
+    const offsetX = (BASE_CANVAS_WIDTH - drawWidth) / 2;
+    const offsetY = (BASE_CANVAS_HEIGHT - drawHeight) / 2;
 
-    return { drawWidth, drawHeight, offsetX, offsetY };
-}
-
-function drawRoundedRectPath(ctx, x, y, width, height, radius) {
-    const resolvedRadius = Math.max(0, Math.min(radius || 0, Math.min(width, height) / 2));
-
-    ctx.beginPath();
-    if (resolvedRadius === 0) {
-        ctx.rect(x, y, width, height);
-        return;
-    }
-
-    ctx.moveTo(x + resolvedRadius, y);
-    ctx.lineTo(x + width - resolvedRadius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + resolvedRadius);
-    ctx.lineTo(x + width, y + height - resolvedRadius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - resolvedRadius, y + height);
-    ctx.lineTo(x + resolvedRadius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - resolvedRadius);
-    ctx.lineTo(x, y + resolvedRadius);
-    ctx.quadraticCurveTo(x, y, x + resolvedRadius, y);
-    ctx.closePath();
-}
-
-function drawArrowHead(ctx, element) {
-    const headLength = element.headLength || Math.max(12, (element.strokeWidth || 1) * 3);
-    const headWidth = element.headWidth || headLength * 0.6;
-    const angle = Math.atan2(element.y2 - element.y1, element.x2 - element.x1);
-
-    const sin = Math.sin(angle);
-    const cos = Math.cos(angle);
-
-    const leftX = element.x2 - headLength * cos + (headWidth / 2) * sin;
-    const leftY = element.y2 - headLength * sin - (headWidth / 2) * cos;
-    const rightX = element.x2 - headLength * cos - (headWidth / 2) * sin;
-    const rightY = element.y2 - headLength * sin + (headWidth / 2) * cos;
-
-    ctx.beginPath();
-    ctx.moveTo(element.x2, element.y2);
-    ctx.lineTo(leftX, leftY);
-    ctx.lineTo(rightX, rightY);
-    ctx.closePath();
-    ctx.fillStyle = element.fill || element.stroke || '#000000';
-    ctx.fill();
-}
-
-function cloneBackgroundVectorDefinition(definition) {
-    const normalised = normaliseBackgroundVectorDefinition(definition);
-    if (!normalised) {
-        return null;
-    }
-
-    return {
-        width: normalised.width,
-        height: normalised.height,
-        elements: normalised.elements.map((element) => ({
-            ...element,
-            dash: Array.isArray(element.dash) ? [...element.dash] : undefined
-        }))
-    };
-}
-
-function normaliseBackgroundVectorDefinition(raw) {
-    if (!raw || typeof raw !== 'object') {
-        return null;
-    }
-
-    const width = toPositiveNumber(
-        raw.width ?? raw.viewBoxWidth ?? (raw.viewBox && raw.viewBox.width)
-    );
-    const height = toPositiveNumber(
-        raw.height ?? raw.viewBoxHeight ?? (raw.viewBox && raw.viewBox.height)
-    );
-
-    if (!width || !height) {
-        return null;
-    }
-
-    const sourceElements = Array.isArray(raw.elements) ? raw.elements : [];
-    const elements = sourceElements.reduce((accumulator, element) => {
-        const normalisedElement = normaliseVectorElement(element);
-        if (normalisedElement) {
-            accumulator.push(normalisedElement);
-        }
-        return accumulator;
-    }, []);
-
-    if (elements.length === 0) {
-        return null;
-    }
-
-    return { width, height, elements };
-}
-
-function normaliseVectorElement(element) {
-    if (!element || typeof element !== 'object') {
-        return null;
-    }
-
-    const type = typeof element.type === 'string' ? element.type : '';
-
-    if (type === 'line' || type === 'arrow') {
-        const x1 = toFiniteNumber(element.x1);
-        const y1 = toFiniteNumber(element.y1);
-        const x2 = toFiniteNumber(element.x2);
-        const y2 = toFiniteNumber(element.y2);
-
-        if (x1 === null || y1 === null || x2 === null || y2 === null) {
-            return null;
-        }
-
-        const strokeWidth = toPositiveNumber(element.strokeWidth, 1);
-        const dash = normaliseDashArray(element.dash);
-        const opacity = normaliseOpacity(element.opacity);
-        const stroke = normaliseColor(element.stroke) || '#000000';
-
-        const base = {
-            type,
-            x1,
-            y1,
-            x2,
-            y2,
-            stroke,
-            strokeWidth,
-            cap: normaliseLineCap(element.cap),
-            join: normaliseLineJoin(element.join),
-            dash,
-            opacity
-        };
-
-        if (type === 'arrow') {
-            return {
-                ...base,
-                headLength: toPositiveNumber(element.headLength, Math.max(12, strokeWidth * 3)),
-                headWidth: toPositiveNumber(element.headWidth, Math.max(8, strokeWidth * 2)),
-                fill: normaliseColor(element.fill) || stroke
-            };
-        }
-
-        return base;
-    }
-
-    if (type === 'rect' || type === 'roundedRect') {
-        const x = toFiniteNumber(element.x);
-        const y = toFiniteNumber(element.y);
-        const width = toPositiveNumber(element.width);
-        const height = toPositiveNumber(element.height);
-
-        if (x === null || y === null || !width || !height) {
-            return null;
-        }
-
-        const strokeWidthValue = toPositiveNumber(element.strokeWidth, null);
-
-        return {
-            type,
-            x,
-            y,
-            width,
-            height,
-            radius: type === 'roundedRect'
-                ? toNonNegativeNumber(element.radius, 0)
-                : 0,
-            stroke: normaliseColor(element.stroke),
-            strokeWidth: strokeWidthValue ?? 0,
-            fill: normaliseFill(element.fill),
-            join: normaliseLineJoin(element.join),
-            opacity: normaliseOpacity(element.opacity)
-        };
-    }
-
-    return null;
-}
-
-function normaliseLineCap(value) {
-    if (typeof value !== 'string') {
-        return 'butt';
-    }
-
-    const cap = value.toLowerCase();
-    return cap === 'round' || cap === 'square' ? cap : 'butt';
-}
-
-function normaliseLineJoin(value) {
-    if (typeof value !== 'string') {
-        return 'miter';
-    }
-
-    const join = value.toLowerCase();
-    return join === 'round' || join === 'bevel' ? join : 'miter';
-}
-
-function normaliseDashArray(value) {
-    if (!Array.isArray(value)) {
-        return undefined;
-    }
-
-    const dash = value
-        .map((entry) => toPositiveNumber(entry, null))
-        .filter((entry) => entry !== null);
-
-    return dash.length > 0 ? dash : undefined;
-}
-
-function normaliseOpacity(value) {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-        return 1;
-    }
-
-    return clampNumber(value, 0, 1);
-}
-
-function normaliseColor(value) {
-    if (typeof value !== 'string') {
-        return null;
-    }
-
-    const trimmed = value.trim();
-    return trimmed.length === 0 || trimmed.toLowerCase() === 'none'
-        ? null
-        : trimmed;
-}
-
-function normaliseFill(value) {
-    if (typeof value !== 'string') {
-        return null;
-    }
-
-    const trimmed = value.trim();
-    if (trimmed.length === 0 || trimmed.toLowerCase() === 'none') {
-        return null;
-    }
-    return trimmed;
-}
-
-function toFiniteNumber(value) {
-    return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function toPositiveNumber(value, fallback = null) {
-    const numeric = typeof value === 'number' && Number.isFinite(value) ? value : null;
-    if (numeric === null || numeric <= 0) {
-        return fallback && Number.isFinite(fallback) && fallback > 0 ? fallback : null;
-    }
-    return numeric;
-}
-
-function toNonNegativeNumber(value, fallback = 0) {
-    const numeric = typeof value === 'number' && Number.isFinite(value) ? value : null;
-    if (numeric === null || numeric < 0) {
-        return fallback >= 0 ? fallback : 0;
-    }
-    return numeric;
-}
-
-function createChineseVectorData() {
-    const elements = [
-        {
-            type: 'roundedRect',
-            x: 48,
-            y: 48,
-            width: 928,
-            height: 928,
-            radius: 64,
-            stroke: '#8fbf68',
-            strokeWidth: 32,
-            fill: null
-        },
-        {
-            type: 'roundedRect',
-            x: 80,
-            y: 80,
-            width: 864,
-            height: 864,
-            radius: 48,
-            stroke: '#cfe5b6',
-            strokeWidth: 12,
-            fill: null
-        },
-        {
-            type: 'line',
-            x1: 80,
-            y1: 512,
-            x2: 944,
-            y2: 512,
-            stroke: '#8fbf68',
-            strokeWidth: 18,
-            dash: [2, 26],
-            cap: 'round',
-            opacity: 0.9
-        },
-        {
-            type: 'line',
-            x1: 512,
-            y1: 80,
-            x2: 512,
-            y2: 944,
-            stroke: '#8fbf68',
-            strokeWidth: 18,
-            dash: [2, 26],
-            cap: 'round',
-            opacity: 0.9
-        }
-    ];
-
-    return cloneBackgroundVectorDefinition({
-        width: 1024,
-        height: 1024,
-        elements
-    });
-}
-
-function createGraphCrossVectorData() {
-    const elements = [
-        {
-            type: 'rect',
-            x: 64,
-            y: 64,
-            width: 896,
-            height: 896,
-            stroke: '#d1d5db',
-            strokeWidth: 6,
-            fill: '#ffffff'
-        }
-    ];
-
-    const gridColor = '#e2e8f0';
-    const gridStroke = 2;
-    const gridLines = [192, 320, 448, 576, 704, 832];
-
-    gridLines.forEach((y) => {
-        elements.push({
-            type: 'line',
-            x1: 64,
-            y1: y,
-            x2: 960,
-            y2: y,
-            stroke: gridColor,
-            strokeWidth: gridStroke
-        });
-    });
-
-    gridLines.forEach((x) => {
-        elements.push({
-            type: 'line',
-            x1: x,
-            y1: 64,
-            x2: x,
-            y2: 960,
-            stroke: gridColor,
-            strokeWidth: gridStroke
-        });
-    });
-
-    const axisStroke = '#4b5563';
-    const axisWidth = 8;
-    const headLength = 36;
-    const headWidth = 24;
-
-    elements.push({
-        type: 'arrow',
-        x1: 80,
-        y1: 512,
-        x2: 944,
-        y2: 512,
-        stroke: axisStroke,
-        strokeWidth: axisWidth,
-        cap: 'round',
-        headLength,
-        headWidth,
-        fill: axisStroke
-    });
-
-    elements.push({
-        type: 'arrow',
-        x1: 512,
-        y1: 944,
-        x2: 512,
-        y2: 80,
-        stroke: axisStroke,
-        strokeWidth: axisWidth,
-        cap: 'round',
-        headLength,
-        headWidth,
-        fill: axisStroke
-    });
-
-    return cloneBackgroundVectorDefinition({
-        width: 1024,
-        height: 1024,
-        elements
-    });
-}
-
-function createGraphCornerVectorData() {
-    const elements = [
-        {
-            type: 'rect',
-            x: 64,
-            y: 64,
-            width: 896,
-            height: 896,
-            stroke: '#d1d5db',
-            strokeWidth: 6,
-            fill: '#ffffff'
-        }
-    ];
-
-    const gridColor = '#e2e8f0';
-    const gridStroke = 2;
-    const horizontalLines = [832, 704, 576, 448, 320, 192];
-    const verticalLines = [192, 320, 448, 576, 704, 832];
-
-    horizontalLines.forEach((y) => {
-        elements.push({
-            type: 'line',
-            x1: 64,
-            y1: y,
-            x2: 960,
-            y2: y,
-            stroke: gridColor,
-            strokeWidth: gridStroke
-        });
-    });
-
-    verticalLines.forEach((x) => {
-        elements.push({
-            type: 'line',
-            x1: x,
-            y1: 64,
-            x2: x,
-            y2: 960,
-            stroke: gridColor,
-            strokeWidth: gridStroke
-        });
-    });
-
-    const axisStroke = '#334155';
-    const axisWidth = 10;
-    const headLength = 40;
-    const headWidth = 26;
-
-    elements.push({
-        type: 'arrow',
-        x1: 96,
-        y1: 896,
-        x2: 912,
-        y2: 896,
-        stroke: axisStroke,
-        strokeWidth: axisWidth,
-        cap: 'round',
-        headLength,
-        headWidth,
-        fill: axisStroke
-    });
-
-    elements.push({
-        type: 'arrow',
-        x1: 96,
-        y1: 896,
-        x2: 96,
-        y2: 112,
-        stroke: axisStroke,
-        strokeWidth: axisWidth,
-        cap: 'round',
-        headLength,
-        headWidth,
-        fill: axisStroke
-    });
-
-    return cloneBackgroundVectorDefinition({
-        width: 1024,
-        height: 1024,
-        elements
-    });
+    ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
 }
 
 function loadImage(dataUrl) {

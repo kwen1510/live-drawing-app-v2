@@ -54,7 +54,6 @@ let historyActions = [];
 let redoActions = [];
 let backgroundImageData = null;
 let backgroundImageElement = null;
-let backgroundVectorDefinition = null;
 
 const reliableState = {
     lastSequence: readNumericSession(RELIABLE_SEQUENCE_STORAGE_KEY, 0),
@@ -570,13 +569,6 @@ function handleTeacherBackgroundEvent(payload = {}) {
 
     if (!trackReliableSequence(payload)) {
         return;
-    }
-
-    const vectorData = payload.vector ?? payload.vectorElements ?? null;
-    if (vectorData) {
-        applyBackgroundVectors(vectorData);
-    } else {
-        clearBackgroundVectors();
     }
 
     const { imageData } = payload;
@@ -1198,10 +1190,6 @@ function redrawCanvas() {
         drawBackgroundImage(backgroundImageElement);
     }
 
-    if (backgroundVectorDefinition) {
-        drawBackgroundVectors(backgroundVectorDefinition);
-    }
-
     storedPaths.forEach((path) => {
         renderStoredPath(path);
     });
@@ -1216,543 +1204,31 @@ function drawBackgroundImage(image) {
 
     const displayWidth = canvasSize.width;
     const displayHeight = canvasSize.height;
-    if (!displayWidth || !displayHeight || !image.width || !image.height) {
+    if (!displayWidth || !displayHeight) {
         return;
     }
 
-    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
-        image.width,
-        image.height,
-        displayWidth,
-        displayHeight
-    );
+    const canvasRatio = displayWidth / displayHeight;
+    const imageRatio = image.width / image.height;
+
+    let drawWidth = displayWidth;
+    let drawHeight = displayHeight;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (imageRatio > canvasRatio) {
+        drawWidth = imageRatio * displayHeight;
+        offsetX = (displayWidth - drawWidth) / 2;
+    } else {
+        drawHeight = displayHeight;
+        drawWidth = displayHeight * imageRatio;
+        offsetX = (displayWidth - drawWidth) / 2;
+    }
 
     ctx.save();
     ctx.globalAlpha = 1;
     ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
     ctx.restore();
-}
-
-function applyBackgroundVectors(definition) {
-    const normalised = normaliseBackgroundVectorDefinition(definition);
-    if (!normalised) {
-        if (backgroundVectorDefinition) {
-            backgroundVectorDefinition = null;
-            redrawCanvas();
-        }
-        return;
-    }
-
-    if (vectorDefinitionsEqual(backgroundVectorDefinition, normalised)) {
-        return;
-    }
-
-    backgroundVectorDefinition = normalised;
-    redrawCanvas();
-}
-
-function clearBackgroundVectors() {
-    if (!backgroundVectorDefinition) {
-        return;
-    }
-
-    backgroundVectorDefinition = null;
-    redrawCanvas();
-}
-
-function drawBackgroundVectors(definition) {
-    if (!ctx) {
-        return;
-    }
-
-    if (!canvasSize.width || !canvasSize.height) {
-        return;
-    }
-
-    const normalised = normaliseBackgroundVectorDefinition(definition);
-    if (!normalised) {
-        return;
-    }
-
-    const { width, height, elements } = normalised;
-    if (!width || !height || elements.length === 0) {
-        return;
-    }
-
-    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
-        width,
-        height,
-        canvasSize.width,
-        canvasSize.height
-    );
-
-    const scaleX = drawWidth / width;
-    const scaleY = drawHeight / height;
-
-    ctx.save();
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(scaleX, scaleY);
-
-    elements.forEach((element) => {
-        ctx.save();
-
-        const opacity = typeof element.opacity === 'number'
-            ? clamp(element.opacity, 0, 1)
-            : 1;
-        ctx.globalAlpha = opacity;
-
-        if (Array.isArray(element.dash) && element.dash.length > 0) {
-            ctx.setLineDash(element.dash);
-        } else {
-            ctx.setLineDash([]);
-        }
-
-        switch (element.type) {
-            case 'line':
-                ctx.beginPath();
-                ctx.lineCap = element.cap || 'butt';
-                ctx.lineJoin = element.join || 'miter';
-                ctx.lineWidth = element.strokeWidth || 1;
-                ctx.strokeStyle = element.stroke || '#000000';
-                ctx.moveTo(element.x1, element.y1);
-                ctx.lineTo(element.x2, element.y2);
-                ctx.stroke();
-                break;
-            case 'arrow':
-                ctx.beginPath();
-                ctx.lineCap = element.cap || 'butt';
-                ctx.lineJoin = element.join || 'miter';
-                ctx.lineWidth = element.strokeWidth || 1;
-                ctx.strokeStyle = element.stroke || '#000000';
-                ctx.moveTo(element.x1, element.y1);
-                ctx.lineTo(element.x2, element.y2);
-                ctx.stroke();
-                drawVectorArrowHead(ctx, element);
-                break;
-            case 'rect':
-            case 'roundedRect': {
-                drawVectorRoundedRect(ctx, element.x, element.y, element.width, element.height, element.radius || 0);
-                if (element.fill) {
-                    ctx.fillStyle = element.fill;
-                    ctx.fill();
-                }
-                if (element.stroke && element.strokeWidth > 0) {
-                    ctx.strokeStyle = element.stroke;
-                    ctx.lineWidth = element.strokeWidth;
-                    ctx.lineJoin = element.join || 'miter';
-                    ctx.stroke();
-                }
-                break;
-            }
-            default:
-                break;
-        }
-
-        ctx.restore();
-    });
-
-    ctx.restore();
-}
-
-function drawVectorRoundedRect(ctx, x, y, width, height, radius) {
-    const resolvedRadius = Math.max(0, Math.min(radius || 0, Math.min(width, height) / 2));
-
-    ctx.beginPath();
-    if (resolvedRadius === 0) {
-        ctx.rect(x, y, width, height);
-        return;
-    }
-
-    ctx.moveTo(x + resolvedRadius, y);
-    ctx.lineTo(x + width - resolvedRadius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + resolvedRadius);
-    ctx.lineTo(x + width, y + height - resolvedRadius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - resolvedRadius, y + height);
-    ctx.lineTo(x + resolvedRadius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - resolvedRadius);
-    ctx.lineTo(x, y + resolvedRadius);
-    ctx.quadraticCurveTo(x, y, x + resolvedRadius, y);
-    ctx.closePath();
-}
-
-function drawVectorArrowHead(ctx, element) {
-    const headLength = element.headLength || Math.max(12, (element.strokeWidth || 1) * 3);
-    const headWidth = element.headWidth || headLength * 0.6;
-    const angle = Math.atan2(element.y2 - element.y1, element.x2 - element.x1);
-
-    const sin = Math.sin(angle);
-    const cos = Math.cos(angle);
-
-    const leftX = element.x2 - headLength * cos + (headWidth / 2) * sin;
-    const leftY = element.y2 - headLength * sin - (headWidth / 2) * cos;
-    const rightX = element.x2 - headLength * cos - (headWidth / 2) * sin;
-    const rightY = element.y2 - headLength * sin + (headWidth / 2) * cos;
-
-    ctx.beginPath();
-    ctx.moveTo(element.x2, element.y2);
-    ctx.lineTo(leftX, leftY);
-    ctx.lineTo(rightX, rightY);
-    ctx.closePath();
-    ctx.fillStyle = element.fill || element.stroke || '#000000';
-    ctx.fill();
-}
-
-function calculateContainDimensions(sourceWidth, sourceHeight, targetWidth, targetHeight) {
-    if (!sourceWidth || !sourceHeight) {
-        return { drawWidth: 0, drawHeight: 0, offsetX: 0, offsetY: 0 };
-    }
-
-    const sourceRatio = sourceWidth / sourceHeight;
-    const targetRatio = targetWidth / targetHeight;
-
-    let drawWidth = targetWidth;
-    let drawHeight = targetHeight;
-
-    if (sourceRatio > targetRatio) {
-        drawHeight = targetWidth / sourceRatio;
-    } else {
-        drawWidth = targetHeight * sourceRatio;
-    }
-
-    const offsetX = (targetWidth - drawWidth) / 2;
-    const offsetY = (targetHeight - drawHeight) / 2;
-
-    return { drawWidth, drawHeight, offsetX, offsetY };
-}
-
-function cloneBackgroundVectorDefinition(definition) {
-    const normalised = normaliseBackgroundVectorDefinition(definition);
-    if (!normalised) {
-        return null;
-    }
-
-    return {
-        width: normalised.width,
-        height: normalised.height,
-        elements: normalised.elements.map((element) => ({
-            ...element,
-            dash: Array.isArray(element.dash) ? [...element.dash] : undefined
-        }))
-    };
-}
-
-function normaliseBackgroundVectorDefinition(definition) {
-    if (!definition || typeof definition !== 'object') {
-        return null;
-    }
-
-    const width = toPositiveNumber(
-        definition.width ?? definition.viewBoxWidth ?? (definition.viewBox && definition.viewBox.width)
-    );
-    const height = toPositiveNumber(
-        definition.height ?? definition.viewBoxHeight ?? (definition.viewBox && definition.viewBox.height)
-    );
-
-    if (!width || !height) {
-        return null;
-    }
-
-    const sourceElements = Array.isArray(definition.elements) ? definition.elements : [];
-    const elements = sourceElements.reduce((accumulator, element) => {
-        const normalisedElement = normaliseVectorElement(element);
-        if (normalisedElement) {
-            accumulator.push(normalisedElement);
-        }
-        return accumulator;
-    }, []);
-
-    if (elements.length === 0) {
-        return null;
-    }
-
-    return { width, height, elements };
-}
-
-function normaliseVectorElement(element) {
-    if (!element || typeof element !== 'object') {
-        return null;
-    }
-
-    const type = typeof element.type === 'string' ? element.type : '';
-
-    if (type === 'line' || type === 'arrow') {
-        const x1 = toFiniteNumber(element.x1);
-        const y1 = toFiniteNumber(element.y1);
-        const x2 = toFiniteNumber(element.x2);
-        const y2 = toFiniteNumber(element.y2);
-
-        if (x1 === null || y1 === null || x2 === null || y2 === null) {
-            return null;
-        }
-
-        const strokeWidth = toPositiveNumber(element.strokeWidth, 1);
-        const stroke = normaliseColor(element.stroke) || '#000000';
-
-        const base = {
-            type,
-            x1,
-            y1,
-            x2,
-            y2,
-            stroke,
-            strokeWidth,
-            cap: normaliseLineCap(element.cap),
-            join: normaliseLineJoin(element.join),
-            dash: normaliseDashArray(element.dash),
-            opacity: normaliseOpacity(element.opacity)
-        };
-
-        if (type === 'arrow') {
-            return {
-                ...base,
-                headLength: toPositiveNumber(element.headLength, Math.max(12, strokeWidth * 3)),
-                headWidth: toPositiveNumber(element.headWidth, Math.max(8, strokeWidth * 2)),
-                fill: normaliseColor(element.fill) || stroke
-            };
-        }
-
-        return base;
-    }
-
-    if (type === 'rect' || type === 'roundedRect') {
-        const x = toFiniteNumber(element.x);
-        const y = toFiniteNumber(element.y);
-        const width = toPositiveNumber(element.width);
-        const height = toPositiveNumber(element.height);
-
-        if (x === null || y === null || !width || !height) {
-            return null;
-        }
-
-        const strokeWidthValue = toPositiveNumber(element.strokeWidth, null);
-
-        return {
-            type,
-            x,
-            y,
-            width,
-            height,
-            radius: type === 'roundedRect'
-                ? toNonNegativeNumber(element.radius, 0)
-                : 0,
-            stroke: normaliseColor(element.stroke),
-            strokeWidth: strokeWidthValue ?? 0,
-            fill: normaliseFill(element.fill),
-            join: normaliseLineJoin(element.join),
-            opacity: normaliseOpacity(element.opacity)
-        };
-    }
-
-    return null;
-}
-
-function normaliseLineCap(value) {
-    if (typeof value !== 'string') {
-        return 'butt';
-    }
-
-    const cap = value.toLowerCase();
-    return cap === 'round' || cap === 'square' ? cap : 'butt';
-}
-
-function normaliseLineJoin(value) {
-    if (typeof value !== 'string') {
-        return 'miter';
-    }
-
-    const join = value.toLowerCase();
-    return join === 'round' || join === 'bevel' ? join : 'miter';
-}
-
-function normaliseDashArray(value) {
-    if (!Array.isArray(value)) {
-        return undefined;
-    }
-
-    const dash = value
-        .map((entry) => toPositiveNumber(entry, null))
-        .filter((entry) => entry !== null);
-
-    return dash.length > 0 ? dash : undefined;
-}
-
-function normaliseOpacity(value) {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-        return 1;
-    }
-
-    return clamp(value, 0, 1);
-}
-
-function normaliseColor(value) {
-    if (typeof value !== 'string') {
-        return null;
-    }
-
-    const trimmed = value.trim();
-    return trimmed.length === 0 || trimmed.toLowerCase() === 'none'
-        ? null
-        : trimmed;
-}
-
-function normaliseFill(value) {
-    if (typeof value !== 'string') {
-        return null;
-    }
-
-    const trimmed = value.trim();
-    if (trimmed.length === 0 || trimmed.toLowerCase() === 'none') {
-        return null;
-    }
-    return trimmed;
-}
-
-function toFiniteNumber(value) {
-    return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function toPositiveNumber(value, fallback = null) {
-    const numeric = typeof value === 'number' && Number.isFinite(value) ? value : null;
-    if (numeric === null || numeric <= 0) {
-        return fallback && Number.isFinite(fallback) && fallback > 0 ? fallback : null;
-    }
-    return numeric;
-}
-
-function toNonNegativeNumber(value, fallback = 0) {
-    const numeric = typeof value === 'number' && Number.isFinite(value) ? value : null;
-    if (numeric === null || numeric < 0) {
-        return fallback >= 0 ? fallback : 0;
-    }
-    return numeric;
-}
-
-function vectorDefinitionsEqual(a, b) {
-    if (!a && !b) {
-        return true;
-    }
-
-    if (!a || !b) {
-        return false;
-    }
-
-    if (a.width !== b.width || a.height !== b.height) {
-        return false;
-    }
-
-    const elementsA = Array.isArray(a.elements) ? a.elements : [];
-    const elementsB = Array.isArray(b.elements) ? b.elements : [];
-
-    if (elementsA.length !== elementsB.length) {
-        return false;
-    }
-
-    for (let i = 0; i < elementsA.length; i += 1) {
-        if (!vectorElementsEqual(elementsA[i], elementsB[i])) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-function vectorElementsEqual(a, b) {
-    if (!a || !b || a.type !== b.type) {
-        return false;
-    }
-
-    if (a.type === 'line' || a.type === 'arrow') {
-        if (a.x1 !== b.x1 || a.y1 !== b.y1 || a.x2 !== b.x2 || a.y2 !== b.y2) {
-            return false;
-        }
-
-        if (a.stroke !== b.stroke || a.strokeWidth !== b.strokeWidth) {
-            return false;
-        }
-
-        if ((a.cap || 'butt') !== (b.cap || 'butt')) {
-            return false;
-        }
-
-        if ((a.join || 'miter') !== (b.join || 'miter')) {
-            return false;
-        }
-
-        if (!dashArraysEqual(a.dash, b.dash)) {
-            return false;
-        }
-
-        if ((a.opacity ?? 1) !== (b.opacity ?? 1)) {
-            return false;
-        }
-
-        if (a.type === 'arrow') {
-            if (a.headLength !== b.headLength || a.headWidth !== b.headWidth) {
-                return false;
-            }
-            if ((a.fill || null) !== (b.fill || null)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    if (a.type === 'rect' || a.type === 'roundedRect') {
-        if (a.x !== b.x || a.y !== b.y || a.width !== b.width || a.height !== b.height) {
-            return false;
-        }
-
-        if ((a.radius || 0) !== (b.radius || 0)) {
-            return false;
-        }
-
-        if ((a.stroke || null) !== (b.stroke || null)) {
-            return false;
-        }
-
-        if ((a.strokeWidth || 0) !== (b.strokeWidth || 0)) {
-            return false;
-        }
-
-        if ((a.fill || null) !== (b.fill || null)) {
-            return false;
-        }
-
-        if ((a.join || 'miter') !== (b.join || 'miter')) {
-            return false;
-        }
-
-        if ((a.opacity ?? 1) !== (b.opacity ?? 1)) {
-            return false;
-        }
-
-        return true;
-    }
-
-    return false;
-}
-
-function dashArraysEqual(a, b) {
-    if (!Array.isArray(a) && !Array.isArray(b)) {
-        return true;
-    }
-
-    if (!Array.isArray(a) || !Array.isArray(b)) {
-        return false;
-    }
-
-    if (a.length !== b.length) {
-        return false;
-    }
-
-    for (let i = 0; i < a.length; i += 1) {
-        if (a[i] !== b[i]) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 function renderStoredPath(path) {
@@ -1847,7 +1323,6 @@ function handleNextQuestionFromTeacher(nextQuestionNumber = null) {
     }
 
     clearCanvas({ broadcast: false });
-    clearBackgroundVectors();
     removeBackgroundImage();
     broadcastCanvas('clear');
     setStatusBadge('Teacher started the next question', 'pending');
@@ -1994,8 +1469,7 @@ function broadcastCanvas(reason = 'update') {
         reason,
         canvasState: {
             paths: clonePaths(storedPaths),
-            backgroundImage: backgroundImageData,
-            backgroundVectors: cloneBackgroundVectorDefinition(backgroundVectorDefinition)
+            backgroundImage: backgroundImageData
         }
     };
 
