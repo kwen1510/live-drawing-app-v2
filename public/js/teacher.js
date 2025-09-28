@@ -9,17 +9,24 @@ const sessionUrlInput = document.getElementById('sessionUrl');
 const copyBtn = document.getElementById('copyBtn');
 const referenceInput = document.getElementById('referenceImage');
 const clearImageBtn = document.getElementById('clearImageBtn');
-const pushImageBtn = document.getElementById('pushImageBtn');
 const referencePreview = document.getElementById('referencePreview');
 const referencePreviewImage = document.getElementById('referencePreviewImage');
-const referenceStatus = document.getElementById('referenceStatus');
 const referenceFileName = document.getElementById('referenceFileName');
-const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+const startQuestionBtn = document.getElementById('startQuestionBtn');
+const modeStatus = document.getElementById('modeStatus');
+const presetSummary = document.getElementById('presetSummary');
+const modeChoiceButtons = Array.from(document.querySelectorAll('[data-mode-choice]'));
+const modePanels = Array.from(document.querySelectorAll('[data-mode-panel]'));
 const studentModal = document.getElementById('studentModal');
 const studentModalCanvas = document.getElementById('studentModalCanvas');
 const studentModalTitle = document.getElementById('studentModalTitle');
 const studentModalSubtitle = document.getElementById('studentModalSubtitle');
 const studentModalClose = document.getElementById('studentModalClose');
+const teacherOverlayCanvas = document.getElementById('teacherOverlayCanvas');
+const teacherPenToggle = document.getElementById('teacherPenToggle');
+const teacherPenClear = document.getElementById('teacherPenClear');
+const teacherPenPalette = document.querySelector('.teacher-pen__palette');
+const teacherPenSwatches = Array.from(document.querySelectorAll('[data-pen-colour]'));
 const openModesBtn = document.getElementById('openModesBtn');
 const modeModal = document.getElementById('modeModal');
 const modeModalClose = document.getElementById('modeModalClose');
@@ -122,11 +129,20 @@ let preferredGridColumns = 3;
 let activeModalStudent = null;
 let modalReturnFocus = null;
 let activePresetId = null;
+let selectedMode = 'whiteboard';
 let modeOptionButtons = [];
 let modePreviewImages = [];
 let isModeModalOpen = false;
 let modeModalReturnFocus = null;
 let studentModalResizeObserver = null;
+let teacherOverlayCtx = teacherOverlayCanvas ? teacherOverlayCanvas.getContext('2d') : null;
+let teacherPenActive = false;
+let teacherPenStudent = null;
+let teacherPenDrawing = false;
+let teacherPenCurrentPath = null;
+let teacherPenColour = '#ef4444';
+const TEACHER_PEN_WIDTH = 6;
+let teacherPenControlsReady = false;
 const presenceKey = `teacher-${Math.random().toString(36).slice(2, 10)}`;
 const students = new Map();
 const GRID_STORAGE_KEY = 'teacher-grid-columns';
@@ -140,13 +156,18 @@ let channelReconnectTimer = null;
 let isReconnecting = false;
 
 const sessionState = {
-    questionNumber: 1,
+    questionNumber: 0,
     lastQuestionStartedAt: Date.now(),
     backgroundVersion: 0,
     backgroundName: null,
     backgroundActive: false,
     lastSequence: 0,
-    lastBackgroundUpdateAt: Date.now()
+    lastBackgroundUpdateAt: Date.now(),
+    isQuestionActive: false,
+    currentMode: {
+        type: 'waiting',
+        label: 'Waiting to start'
+    }
 };
 
 const supabaseUrl = window.SUPABASE_URL;
@@ -183,7 +204,7 @@ async function initialiseTeacherConsole() {
     initialiseRealtimeChannel();
 
     setupCopyButton();
-    setupClassroomControls();
+    setupQuestionControls();
     setupStudentGridControls();
     setupStudentModal();
     setupModeModal();
@@ -266,6 +287,8 @@ async function onChannelStatusChange(status) {
         if (copyBtn) {
             copyBtn.disabled = false;
         }
+        refreshModeStatus();
+        updateStartButtonState();
 
         try {
             const { error } = await channel.track({ role: 'teacher', sessionCode });
@@ -308,6 +331,8 @@ function handleChannelDisconnection(message, reason) {
     if (copyBtn) {
         copyBtn.disabled = true;
     }
+    refreshModeStatus();
+    updateStartButtonState();
     setStatusBadge(message, 'error');
     if (connectionStatus) {
         connectionStatus.textContent = 'Reconnecting to Supabase...';
@@ -392,20 +417,37 @@ function sendReliableBroadcast(event, payload = {}, options = {}) {
 }
 
 function recordBackgroundChange(imageData, meta = {}) {
-    sessionState.backgroundActive = Boolean(imageData) || Boolean(activeBackgroundVectors);
+    const hasImage = Boolean(imageData);
+    const hasVector = Boolean(activeBackgroundVectors);
+    const label = meta.name || meta.label || null;
+
+    sessionState.backgroundActive = hasImage || hasVector;
     sessionState.backgroundVersion += 1;
-    sessionState.backgroundName = imageData
-        ? (meta.name || meta.label || null)
-        : null;
+    sessionState.backgroundName = label;
     sessionState.lastBackgroundUpdateAt = Date.now();
 }
 
-function advanceQuestionState() {
+function advanceQuestionState(modeDescriptor = null) {
     sessionState.questionNumber += 1;
     sessionState.lastQuestionStartedAt = Date.now();
-    sessionState.backgroundActive = Boolean(activeBackgroundImage);
-    if (!sessionState.backgroundActive) {
-        sessionState.backgroundName = null;
+    sessionState.backgroundActive = Boolean(activeBackgroundImage) || Boolean(activeBackgroundVectors);
+    sessionState.isQuestionActive = true;
+
+    if (modeDescriptor && typeof modeDescriptor === 'object') {
+        sessionState.currentMode = {
+            type: modeDescriptor.type || selectedMode,
+            label: modeDescriptor.label || 'Question',
+            description: modeDescriptor.description || null
+        };
+        if (modeDescriptor.label) {
+            sessionState.backgroundName = modeDescriptor.label;
+        }
+    } else {
+        sessionState.currentMode = {
+            type: selectedMode,
+            label: 'Question',
+            description: null
+        };
     }
 }
 
@@ -430,7 +472,9 @@ function sendSessionSnapshot(targetUsername, afterSequence = 0) {
         backgroundName: sessionState.backgroundName,
         backgroundActive: sessionState.backgroundActive,
         lastSequence: sessionState.lastSequence,
-        lastBackgroundUpdateAt: sessionState.lastBackgroundUpdateAt
+        lastBackgroundUpdateAt: sessionState.lastBackgroundUpdateAt,
+        isQuestionActive: sessionState.isQuestionActive,
+        currentMode: sessionState.currentMode
     };
 
     const payload = {
@@ -580,7 +624,7 @@ function ensureStudentCard(username) {
     container.appendChild(header);
     container.appendChild(updatedAt);
     container.appendChild(canvasWrapper);
-    studentGrid.appendChild(container);
+    insertStudentCardSorted(container, username);
 
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff';
@@ -600,11 +644,30 @@ function ensureStudentCard(username) {
         backgroundVectors: null,
         paths: [],
         previewCanvas: null,
-        previewCtx: null
+        previewCtx: null,
+        teacherAnnotations: []
     };
 
     students.set(username, student);
     return student;
+}
+
+function insertStudentCardSorted(cardElement, username) {
+    if (!studentGrid) {
+        return;
+    }
+
+    const lowerUsername = username.toLowerCase();
+    const cards = Array.from(studentGrid.children);
+    for (const existingCard of cards) {
+        const existingUsername = existingCard.getAttribute('data-username') || '';
+        if (lowerUsername.localeCompare(existingUsername.toLowerCase(), undefined, { numeric: true }) < 0) {
+            studentGrid.insertBefore(cardElement, existingCard);
+            return;
+        }
+    }
+
+    studentGrid.appendChild(cardElement);
 }
 
 function updateStudentCanvas(username, canvasState) {
@@ -800,6 +863,273 @@ function setupStudentModal() {
             studentModalResizeObserver.observe(wrapper);
         }
     }
+
+    setupTeacherPenControls();
+}
+
+function setupTeacherPenControls() {
+    if (teacherPenControlsReady) {
+        return;
+    }
+
+    if (!teacherOverlayCanvas || !teacherPenToggle) {
+        return;
+    }
+
+    teacherOverlayCtx = teacherOverlayCanvas.getContext('2d');
+    if (!teacherOverlayCtx) {
+        return;
+    }
+
+    teacherOverlayCanvas.width = BASE_CANVAS_WIDTH;
+    teacherOverlayCanvas.height = BASE_CANVAS_HEIGHT;
+
+    teacherOverlayCanvas.addEventListener('pointerdown', handleTeacherPenPointerDown);
+    teacherOverlayCanvas.addEventListener('pointermove', handleTeacherPenPointerMove);
+    teacherOverlayCanvas.addEventListener('pointerup', handleTeacherPenPointerUp);
+    teacherOverlayCanvas.addEventListener('pointerleave', handleTeacherPenPointerUp);
+    teacherOverlayCanvas.addEventListener('pointercancel', handleTeacherPenPointerUp);
+    teacherOverlayCanvas.addEventListener('lostpointercapture', handleTeacherPenPointerUp);
+
+    teacherPenToggle.addEventListener('click', () => {
+        setTeacherPenActive(!teacherPenActive);
+    });
+
+    if (Array.isArray(teacherPenSwatches)) {
+        teacherPenSwatches.forEach((swatch) => {
+            if (!swatch) {
+                return;
+            }
+            swatch.addEventListener('click', () => {
+                const colour = swatch.dataset.penColour;
+                if (colour) {
+                    setTeacherPenColour(colour);
+                }
+            });
+        });
+    }
+
+    if (teacherPenClear) {
+        teacherPenClear.addEventListener('click', () => {
+            clearTeacherPenAnnotations();
+        });
+    }
+
+    setTeacherPenColour(teacherPenColour);
+    teacherPenControlsReady = true;
+    updateTeacherPenUi();
+    renderTeacherAnnotations();
+}
+
+function setTeacherPenActive(active) {
+    const hasStudent = Boolean(teacherPenStudent);
+    teacherPenActive = Boolean(active) && hasStudent;
+
+    if (!teacherPenActive) {
+        teacherPenDrawing = false;
+        teacherPenCurrentPath = null;
+    }
+
+    if (teacherOverlayCanvas) {
+        teacherOverlayCanvas.style.pointerEvents = teacherPenActive ? 'auto' : 'none';
+        teacherOverlayCanvas.style.touchAction = teacherPenActive ? 'none' : 'auto';
+    }
+
+    updateTeacherPenUi();
+}
+
+function setTeacherPenColour(colour) {
+    if (typeof colour !== 'string' || colour.trim().length === 0) {
+        return;
+    }
+
+    teacherPenColour = colour;
+
+    if (Array.isArray(teacherPenSwatches)) {
+        teacherPenSwatches.forEach((swatch) => {
+            if (!swatch) {
+                return;
+            }
+            const isActive = swatch.dataset.penColour === colour;
+            swatch.classList.toggle('is-active', isActive);
+            swatch.setAttribute('aria-pressed', String(isActive));
+        });
+    }
+}
+
+function updateTeacherPenUi() {
+    const hasStudent = Boolean(teacherPenStudent);
+    const toggleActive = teacherPenActive && hasStudent;
+
+    if (teacherPenToggle) {
+        teacherPenToggle.disabled = !hasStudent;
+        teacherPenToggle.setAttribute('aria-pressed', String(toggleActive));
+        teacherPenToggle.classList.toggle('is-disabled', !hasStudent);
+        const label = teacherPenToggle.querySelector('.teacher-pen__toggle-label');
+        if (label) {
+            label.textContent = toggleActive ? 'Disable pen' : 'Enable pen';
+        }
+    }
+
+    if (teacherPenPalette) {
+        teacherPenPalette.setAttribute('aria-hidden', String(!hasStudent));
+        teacherPenPalette.classList.toggle('is-muted', hasStudent && !toggleActive);
+    }
+
+    const hasAnnotations = hasStudent && Array.isArray(teacherPenStudent.teacherAnnotations)
+        && teacherPenStudent.teacherAnnotations.length > 0;
+
+    if (teacherPenClear) {
+        teacherPenClear.disabled = !hasAnnotations;
+    }
+}
+
+function clearTeacherPenAnnotations() {
+    if (!teacherPenStudent) {
+        return;
+    }
+
+    teacherPenStudent.teacherAnnotations = [];
+    renderTeacherAnnotations();
+    updateTeacherPenUi();
+}
+
+function renderTeacherAnnotations() {
+    if (!teacherOverlayCtx || !teacherOverlayCanvas) {
+        return;
+    }
+
+    teacherOverlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+    teacherOverlayCtx.clearRect(0, 0, teacherOverlayCanvas.width, teacherOverlayCanvas.height);
+
+    if (!teacherPenStudent || !Array.isArray(teacherPenStudent.teacherAnnotations)) {
+        return;
+    }
+
+    teacherPenStudent.teacherAnnotations.forEach((path) => {
+        drawSmoothStudentPath(teacherOverlayCtx, path);
+    });
+}
+
+function attachTeacherPenToStudent(student) {
+    teacherPenStudent = student || null;
+    teacherPenDrawing = false;
+    teacherPenCurrentPath = null;
+
+    if (!teacherPenStudent) {
+        setTeacherPenActive(false);
+        renderTeacherAnnotations();
+        updateTeacherPenUi();
+        return;
+    }
+
+    if (!Array.isArray(teacherPenStudent.teacherAnnotations)) {
+        teacherPenStudent.teacherAnnotations = [];
+    }
+
+    setTeacherPenActive(false);
+    renderTeacherAnnotations();
+    updateTeacherPenUi();
+}
+
+function detachTeacherPenFromStudent() {
+    teacherPenDrawing = false;
+    teacherPenCurrentPath = null;
+    teacherPenStudent = null;
+    setTeacherPenActive(false);
+    renderTeacherAnnotations();
+    updateTeacherPenUi();
+}
+
+function handleTeacherPenPointerDown(event) {
+    if (!teacherPenActive || !teacherPenStudent || !teacherOverlayCanvas) {
+        return;
+    }
+
+    event.preventDefault();
+
+    const path = {
+        color: teacherPenColour,
+        width: TEACHER_PEN_WIDTH,
+        erase: false,
+        points: []
+    };
+
+    teacherPenStudent.teacherAnnotations.push(path);
+    teacherPenCurrentPath = path;
+    teacherPenDrawing = true;
+
+    addTeacherPenPoint(event);
+
+    if (typeof event.pointerId === 'number') {
+        teacherOverlayCanvas.setPointerCapture(event.pointerId);
+    }
+}
+
+function handleTeacherPenPointerMove(event) {
+    if (!teacherPenDrawing) {
+        return;
+    }
+
+    event.preventDefault();
+    addTeacherPenPoint(event);
+}
+
+function handleTeacherPenPointerUp(event) {
+    if (!teacherPenDrawing) {
+        return;
+    }
+
+    event.preventDefault();
+
+    addTeacherPenPoint(event);
+
+    const completedPath = teacherPenCurrentPath;
+
+    teacherPenDrawing = false;
+    teacherPenCurrentPath = null;
+
+    if (completedPath && Array.isArray(completedPath.points) && completedPath.points.length === 0) {
+        if (teacherPenStudent && Array.isArray(teacherPenStudent.teacherAnnotations)) {
+            teacherPenStudent.teacherAnnotations.pop();
+        }
+        renderTeacherAnnotations();
+    }
+
+    if (teacherOverlayCanvas && typeof event.pointerId === 'number') {
+        try {
+            teacherOverlayCanvas.releasePointerCapture(event.pointerId);
+        } catch (_error) {
+            // Ignore release errors if capture wasn't set.
+        }
+    }
+
+    updateTeacherPenUi();
+}
+
+function addTeacherPenPoint(event) {
+    if (!teacherPenCurrentPath || !teacherOverlayCanvas) {
+        return;
+    }
+
+    const rect = teacherOverlayCanvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+        return;
+    }
+
+    const scaleX = teacherOverlayCanvas.width / rect.width;
+    const scaleY = teacherOverlayCanvas.height / rect.height;
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
+
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return;
+    }
+
+    teacherPenCurrentPath.points.push({ x, y, p: 1 });
+
+    renderTeacherAnnotations();
+    updateTeacherPenUi();
 }
 
 function setupModeModal() {
@@ -842,7 +1172,7 @@ function setupModeModal() {
         button.addEventListener('click', () => {
             const presetId = button.dataset.preset;
             if (presetId) {
-                applyPresetBackground(presetId);
+                selectPreset(presetId);
             }
         });
     });
@@ -911,49 +1241,6 @@ function closeModeModal() {
     modeModalReturnFocus = null;
 }
 
-function applyPresetBackground(presetId) {
-    const preset = getPresetById(presetId);
-    if (!preset) {
-        return;
-    }
-
-    activePresetId = presetId;
-    selectedImageData = null;
-    selectedImageName = '';
-
-    if (referenceInput) {
-        referenceInput.value = '';
-    }
-
-    updateModeSelections();
-
-    updateReferencePreview(preset.imageData, preset.previewAlt || 'Selected mode preview');
-
-    if (referenceFileName) {
-        referenceFileName.textContent = `Mode: ${preset.label}`;
-    }
-
-    if (pushImageBtn) {
-        pushImageBtn.disabled = true;
-        pushImageBtn.textContent = 'Push to students';
-    }
-
-    if (clearImageBtn) {
-        clearImageBtn.hidden = false;
-    }
-
-    activeBackgroundImage = preset.imageData;
-    activeBackgroundVectors = cloneBackgroundVectorDefinition(preset.vector);
-    recordBackgroundChange(preset.imageData, { name: preset.label, label: preset.label });
-    sendReliableBroadcast('set_background', {
-        imageData: preset.imageData,
-        presetId: preset.id || null,
-        vector: cloneBackgroundVectorDefinition(activeBackgroundVectors)
-    });
-    updateReferenceStatus(`${preset.label} mode sent to your students.`);
-    closeModeModal();
-}
-
 function updateModeSelections() {
     if (!Array.isArray(modeOptionButtons)) {
         modeOptionButtons = [];
@@ -994,6 +1281,8 @@ function openStudentModal(username, triggerElement) {
     studentModalCanvas.height = 768;
     student.previewCanvas = studentModalCanvas;
     student.previewCtx = studentModalCanvas.getContext('2d');
+
+    attachTeacherPenToStudent(student);
 
     addBodyModalLock();
     studentModal.removeAttribute('hidden');
@@ -1037,6 +1326,8 @@ function closeStudentModal() {
     removeBodyModalLock();
     window.removeEventListener('resize', resizeStudentModalCanvas);
 
+    detachTeacherPenFromStudent();
+
     if (modalReturnFocus && typeof modalReturnFocus.focus === 'function' && document.contains(modalReturnFocus)) {
         modalReturnFocus.focus();
     }
@@ -1078,6 +1369,7 @@ function resizeStudentModalCanvas() {
 
     studentModalCanvas.style.width = `${drawWidth}px`;
     studentModalCanvas.style.height = `${drawHeight}px`;
+
 }
 
 function updateStudentModalMeta(student) {
@@ -1149,28 +1441,150 @@ function setupCopyButton() {
     });
 }
 
-function setupClassroomControls() {
-    if (!referenceInput || !pushImageBtn || !referenceStatus) {
+function setupQuestionControls() {
+    if (!startQuestionBtn || !modeStatus) {
         return;
     }
 
-    referenceInput.addEventListener('change', handleReferenceSelection);
+    if (Array.isArray(modeChoiceButtons) && modeChoiceButtons.length > 0) {
+        modeChoiceButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const mode = button.dataset.modeChoice;
+                if (mode) {
+                    setSelectedMode(mode);
+                }
+            });
+        });
+    }
 
-    if (pushImageBtn) {
-        pushImageBtn.addEventListener('click', handlePushImageToStudents);
+    setSelectedMode(selectedMode);
+    renderPresetSummary();
+
+    if (referenceInput) {
+        referenceInput.addEventListener('change', handleReferenceSelection);
     }
 
     if (clearImageBtn) {
         clearImageBtn.addEventListener('click', () => {
-            clearReferenceImage(true);
+            clearReferenceImage(false);
         });
     }
 
-    if (nextQuestionBtn) {
-        nextQuestionBtn.addEventListener('click', handleNextQuestion);
+    startQuestionBtn.addEventListener('click', handleStartQuestion);
+
+    refreshModeStatus();
+    updateStartButtonState();
+}
+
+function setSelectedMode(mode) {
+    const validModes = ['whiteboard', 'upload', 'preset'];
+    const resolvedMode = validModes.includes(mode) ? mode : 'whiteboard';
+    selectedMode = resolvedMode;
+
+    if (Array.isArray(modeChoiceButtons)) {
+        modeChoiceButtons.forEach((button) => {
+            if (!button) {
+                return;
+            }
+            const isActive = button.dataset.modeChoice === resolvedMode;
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('aria-selected', String(isActive));
+        });
     }
 
-    updateReferenceStatus('Choose an image to send to your class.');
+    if (Array.isArray(modePanels)) {
+        modePanels.forEach((panel) => {
+            if (!panel) {
+                return;
+            }
+            const isActive = panel.dataset.modePanel === resolvedMode;
+            panel.classList.toggle('is-active', isActive);
+            if (isActive) {
+                panel.removeAttribute('hidden');
+            } else {
+                panel.setAttribute('hidden', '');
+            }
+        });
+    }
+
+    refreshModeStatus();
+    updateStartButtonState();
+}
+
+function setModeStatus(message) {
+    if (modeStatus) {
+        modeStatus.textContent = message;
+    }
+}
+
+function getSelectedModeLabel() {
+    if (selectedMode === 'upload') {
+        return selectedImageName
+            ? `photo of “${selectedImageName}”`
+            : 'photo reference';
+    }
+
+    if (selectedMode === 'preset') {
+        const preset = getPresetById(activePresetId);
+        if (preset) {
+            return `${preset.label} template`;
+        }
+        return 'template';
+    }
+
+    return 'blank whiteboard';
+}
+
+function canSendQuestion() {
+    if (selectedMode === 'upload') {
+        return Boolean(selectedImageData);
+    }
+
+    if (selectedMode === 'preset') {
+        return Boolean(activePresetId);
+    }
+
+    return true;
+}
+
+function updateStartButtonState() {
+    if (!startQuestionBtn) {
+        return;
+    }
+
+    const nextNumber = sessionState.questionNumber + 1;
+    startQuestionBtn.textContent = channelReady
+        ? `Send question #${nextNumber}`
+        : 'Connecting…';
+
+    startQuestionBtn.disabled = !channelReady || !canSendQuestion();
+}
+
+function refreshModeStatus() {
+    if (!modeStatus) {
+        return;
+    }
+
+    if (!channelReady) {
+        setModeStatus('Connecting to Supabase…');
+        return;
+    }
+
+    if (!canSendQuestion()) {
+        if (selectedMode === 'upload') {
+            setModeStatus('Choose a photo before sending your question.');
+            return;
+        }
+
+        if (selectedMode === 'preset') {
+            setModeStatus('Select a template to continue.');
+            return;
+        }
+    }
+
+    const label = getSelectedModeLabel();
+    const nextNumber = sessionState.questionNumber + 1;
+    setModeStatus(`Ready to send question #${nextNumber} with a ${label}.`);
 }
 
 function handleReferenceSelection(event) {
@@ -1181,7 +1595,7 @@ function handleReferenceSelection(event) {
 
     const [file] = files;
     if (!file || !file.type.startsWith('image/')) {
-        updateReferenceStatus('Please choose a supported image file.');
+        setModeStatus('Please choose a supported image file.');
         if (referenceInput) {
             referenceInput.value = '';
         }
@@ -1193,11 +1607,12 @@ function handleReferenceSelection(event) {
     const reader = new FileReader();
     reader.onload = () => {
         if (typeof reader.result !== 'string') {
-            updateReferenceStatus('We could not read that file. Please try another image.');
+            setModeStatus('We could not read that file. Please try another image.');
             return;
         }
 
         selectedImageData = reader.result;
+        setSelectedMode('upload');
         activePresetId = null;
         updateModeSelections();
         updateReferencePreview(
@@ -1209,47 +1624,21 @@ function handleReferenceSelection(event) {
 
         if (referenceFileName) {
             referenceFileName.textContent = selectedImageName
-                ? `Selected: ${selectedImageName}`
-                : 'Image ready to send';
-        }
-
-        if (pushImageBtn) {
-            pushImageBtn.disabled = false;
+                ? `Selected photo: ${selectedImageName}`
+                : 'Photo ready to send';
         }
 
         if (clearImageBtn) {
             clearImageBtn.hidden = false;
         }
 
-        updateReferenceStatus(`Ready to send "${selectedImageName}" to your students.`);
+        refreshModeStatus();
+        updateStartButtonState();
     };
     reader.onerror = () => {
-        updateReferenceStatus('We could not read that file. Please try another image.');
+        setModeStatus('We could not read that file. Please try another image.');
     };
     reader.readAsDataURL(file);
-}
-
-function handlePushImageToStudents() {
-    if (!selectedImageData) {
-        updateReferenceStatus('Choose an image before pushing it to students.');
-        return;
-    }
-
-    if (!channelReady) {
-        updateReferenceStatus('Realtime connection not ready yet. Please try again momentarily.');
-        return;
-    }
-
-    activeBackgroundImage = selectedImageData;
-    activeBackgroundVectors = null;
-    recordBackgroundChange(selectedImageData, { name: selectedImageName || 'Uploaded image' });
-    sendReliableBroadcast('set_background', {
-        imageData: selectedImageData,
-        fileName: selectedImageName || null,
-        vector: null
-    });
-    updateReferenceStatus('Image sent to your students.');
-    showPushFeedback('Sent!');
 }
 
 function clearReferenceImage(resetActive = false) {
@@ -1259,11 +1648,12 @@ function clearReferenceImage(resetActive = false) {
     if (resetActive) {
         activeBackgroundImage = null;
         activeBackgroundVectors = null;
-        recordBackgroundChange(null, { name: null });
+        recordBackgroundChange(null, { name: 'Whiteboard' });
     }
 
     activePresetId = null;
     updateModeSelections();
+    renderPresetSummary();
 
     if (referenceInput) {
         referenceInput.value = '';
@@ -1272,19 +1662,15 @@ function clearReferenceImage(resetActive = false) {
     updateReferencePreview(null);
 
     if (referenceFileName) {
-        referenceFileName.textContent = 'No image selected';
-    }
-
-    if (pushImageBtn) {
-        pushImageBtn.disabled = true;
-        pushImageBtn.textContent = 'Push to students';
+        referenceFileName.textContent = 'No photo selected';
     }
 
     if (clearImageBtn) {
         clearImageBtn.hidden = true;
     }
 
-    updateReferenceStatus('Choose an image to send to your class.');
+    refreshModeStatus();
+    updateStartButtonState();
 }
 
 function updateReferencePreview(imageData, altText = 'Selected reference preview') {
@@ -1304,22 +1690,143 @@ function updateReferencePreview(imageData, altText = 'Selected reference preview
     referencePreviewImage.alt = altText;
 }
 
-function updateReferenceStatus(message) {
-    if (!referenceStatus) return;
-    referenceStatus.textContent = message;
+function renderPresetSummary() {
+    if (!presetSummary) {
+        return;
+    }
+
+    presetSummary.innerHTML = '';
+    const preset = getPresetById(activePresetId);
+    if (!preset) {
+        const empty = document.createElement('p');
+        empty.className = 'mode-panel__empty';
+        empty.textContent = 'No template chosen yet.';
+        presetSummary.appendChild(empty);
+        return;
+    }
+
+    const art = document.createElement('div');
+    art.className = 'mode-panel__preset-art';
+    if (preset.imageData) {
+        art.style.backgroundImage = `url(${preset.imageData})`;
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'mode-panel__preset-meta';
+    const title = document.createElement('strong');
+    title.textContent = preset.label;
+    const description = document.createElement('span');
+    description.textContent = preset.description || 'Template';
+    meta.appendChild(title);
+    meta.appendChild(description);
+
+    presetSummary.appendChild(art);
+    presetSummary.appendChild(meta);
 }
 
-function showPushFeedback(message) {
-    if (!pushImageBtn) return;
-    const originalText = pushImageBtn.textContent;
-    pushImageBtn.textContent = message;
-    pushImageBtn.disabled = true;
-    setTimeout(() => {
-        pushImageBtn.textContent = originalText;
-        if (selectedImageData) {
-            pushImageBtn.disabled = false;
+function selectPreset(presetId) {
+    const preset = getPresetById(presetId);
+    if (!preset) {
+        return;
+    }
+
+    activePresetId = presetId;
+    selectedImageData = null;
+    selectedImageName = '';
+
+    if (referenceInput) {
+        referenceInput.value = '';
+    }
+
+    if (referenceFileName) {
+        referenceFileName.textContent = 'No photo selected';
+    }
+
+    if (clearImageBtn) {
+        clearImageBtn.hidden = true;
+    }
+
+    updateReferencePreview(preset.imageData, preset.previewAlt || 'Selected template preview');
+    renderPresetSummary();
+    updateModeSelections();
+    setSelectedMode('preset');
+    refreshModeStatus();
+    updateStartButtonState();
+    closeModeModal();
+}
+
+function buildQuestionPayload() {
+    const payload = {
+        mode: {
+            type: selectedMode,
+            label: 'Whiteboard',
+            description: 'Blank canvas'
+        },
+        background: {
+            imageData: null,
+            vector: null,
+            presetId: null,
+            fileName: null
         }
-    }, 1600);
+    };
+
+    if (selectedMode === 'upload' && selectedImageData) {
+        payload.mode.label = selectedImageName ? `Photo: ${selectedImageName}` : 'Photo reference';
+        payload.mode.description = 'Uploaded image';
+        payload.background.imageData = selectedImageData;
+        payload.background.fileName = selectedImageName || null;
+    } else if (selectedMode === 'preset') {
+        const preset = getPresetById(activePresetId);
+        if (preset) {
+            payload.mode.label = preset.label;
+            payload.mode.description = preset.description || 'Template';
+            payload.background.imageData = preset.imageData || null;
+            payload.background.vector = cloneBackgroundVectorDefinition(preset.vector);
+            payload.background.presetId = preset.id || null;
+            payload.background.fileName = preset.label || null;
+        }
+    }
+
+    return payload;
+}
+
+function handleStartQuestion() {
+    if (!channelReady) {
+        refreshModeStatus();
+        return;
+    }
+
+    if (!canSendQuestion()) {
+        refreshModeStatus();
+        return;
+    }
+
+    if (typeof window !== 'undefined' && sessionState.isQuestionActive) {
+        const confirmReset = window.confirm('Start the next question and clear every student canvas?');
+        if (!confirmReset) {
+            return;
+        }
+    }
+
+    const payload = buildQuestionPayload();
+    const { mode, background } = payload;
+
+    activeBackgroundImage = background.imageData || null;
+    activeBackgroundVectors = background.vector ? cloneBackgroundVectorDefinition(background.vector) : null;
+    recordBackgroundChange(activeBackgroundImage, { name: background.fileName || mode.label });
+
+    advanceQuestionState(mode);
+
+    sendReliableBroadcast('next_question', {
+        initiatedAt: Date.now(),
+        questionNumber: sessionState.questionNumber,
+        mode,
+        background
+    });
+
+    clearAllStudentCanvases(background);
+    setModeStatus(`${mode.label} sent to your students.`);
+    updateStartButtonState();
 }
 
 function sendBackgroundToStudent(username) {
@@ -1334,31 +1841,30 @@ function sendBackgroundToStudent(username) {
     });
 }
 
-function handleNextQuestion() {
-    if (typeof window !== 'undefined') {
-        const confirmReset = window.confirm('Clear every student canvas and move to the next question?');
-        if (!confirmReset) {
-            return;
-        }
-    }
+function clearAllStudentCanvases(background = null) {
+    const backgroundImage = background?.imageData || null;
+    const backgroundVector = background?.vector ? cloneBackgroundVectorDefinition(background.vector) : null;
 
-    clearReferenceImage(true);
-    advanceQuestionState();
-    const { questionNumber } = sessionState;
-    sendReliableBroadcast('next_question', {
-        initiatedAt: Date.now(),
-        questionNumber
-    });
-    clearAllStudentCanvases();
-    updateReferenceStatus('Student canvases cleared. Share a new image when you\'re ready.');
-}
-
-function clearAllStudentCanvases() {
     students.forEach((student, username) => {
-        student.backgroundImageData = null;
-        student.backgroundImageElement = null;
-        student.backgroundVectors = null;
         student.paths = [];
+
+        if (backgroundImage) {
+            student.backgroundImageData = backgroundImage;
+            const image = new Image();
+            image.onload = () => {
+                if (student.backgroundImageElement === image) {
+                    drawStudentCanvas(student);
+                }
+            };
+            image.src = backgroundImage;
+            student.backgroundImageElement = image;
+        } else {
+            student.backgroundImageData = null;
+            student.backgroundImageElement = null;
+        }
+
+        student.backgroundVectors = backgroundVector ? cloneBackgroundVectorDefinition(backgroundVector) : null;
+
         drawStudentCanvas(student);
         student.updatedAt.textContent = 'Awaiting activity';
         setStudentSyncState(username, true);

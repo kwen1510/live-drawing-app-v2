@@ -40,34 +40,59 @@
                 </div>
             </div>
 
-            <div class="session-card session-card--tools">
-                <div class="session-tools__header">
-                    <h2>Classroom controls</h2>
-                    <p class="panel-subtitle">Share a reference image with your class and reset canvases when it's time for the next prompt.</p>
+            <div class="session-card session-card--modes">
+                <div class="session-modes__header">
+                    <h2>Prepare the next question</h2>
+                    <p class="panel-subtitle">Choose what your students should see before you send it. We'll hold their canvases until you start.</p>
                 </div>
 
-                <div class="session-tools__upload">
-                    <label for="referenceImage" class="secondary-btn session-tools__upload-btn">Choose image</label>
-                    <input type="file" id="referenceImage" accept="image/*" hidden>
-                    <button id="clearImageBtn" class="ghost-btn" type="button" hidden>Clear selection</button>
+                <div class="session-modes__choices" role="tablist" aria-label="Question modes">
+                    <button class="mode-choice is-active" type="button" role="tab" id="modeWhiteboard" aria-selected="true" data-mode-choice="whiteboard">
+                        <span class="mode-choice__title">Whiteboard</span>
+                        <span class="mode-choice__description">Blank canvas for open drawing.</span>
+                    </button>
+                    <button class="mode-choice" type="button" role="tab" id="modeUpload" aria-selected="false" data-mode-choice="upload">
+                        <span class="mode-choice__title">Photo</span>
+                        <span class="mode-choice__description">Upload a reference image.</span>
+                    </button>
+                    <button class="mode-choice" type="button" role="tab" id="modePreset" aria-selected="false" data-mode-choice="preset">
+                        <span class="mode-choice__title">Template</span>
+                        <span class="mode-choice__description">Send a ready-made grid.</span>
+                    </button>
                 </div>
-                <p class="session-tools__filename" id="referenceFileName">No image selected</p>
 
-                <div class="session-tools__preview" id="referencePreview" hidden>
-                    <img id="referencePreviewImage" alt="Selected reference preview">
+                <div class="session-modes__panel">
+                    <div class="mode-panel is-active" data-mode-panel="whiteboard" role="tabpanel" aria-labelledby="modeWhiteboard">
+                        <div class="mode-panel__preview mode-panel__preview--whiteboard">
+                            <span class="mode-panel__empty">Students will see a clean white canvas.</span>
+                        </div>
+                    </div>
+
+                    <div class="mode-panel" data-mode-panel="upload" role="tabpanel" aria-labelledby="modeUpload" hidden>
+                        <div class="mode-panel__upload">
+                            <label for="referenceImage" class="secondary-btn mode-panel__upload-btn">Choose photo</label>
+                            <input type="file" id="referenceImage" accept="image/*" hidden>
+                            <button id="clearImageBtn" class="ghost-btn" type="button" hidden>Clear selection</button>
+                        </div>
+                        <p class="mode-panel__filename" id="referenceFileName">No photo selected</p>
+                        <div class="mode-panel__preview" id="referencePreview" hidden>
+                            <img id="referencePreviewImage" alt="Selected reference preview">
+                        </div>
+                    </div>
+
+                    <div class="mode-panel" data-mode-panel="preset" role="tabpanel" aria-labelledby="modePreset" hidden>
+                        <div class="mode-panel__preset">
+                            <div class="mode-panel__preset-summary" id="presetSummary">
+                                <p class="mode-panel__empty">No template chosen yet.</p>
+                            </div>
+                            <button id="openModesBtn" class="secondary-btn" type="button">Browse templates</button>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="session-tools__actions">
-                    <button id="pushImageBtn" class="primary-btn" type="button" disabled>Push to students</button>
-                    <button id="openModesBtn" class="ghost-btn" type="button">Modes</button>
-                </div>
-                <p class="session-tools__status" id="referenceStatus">Choose an image to send to your class.</p>
-
-                <div class="session-tools__divider"></div>
-                <div class="session-tools__flow">
-                    <h3>Ready for the next question?</h3>
-                    <p class="panel-subtitle">Clear every student's canvas and remove any shared background image.</p>
-                    <button id="nextQuestionBtn" class="ghost-btn ghost-btn--danger session-tools__next" type="button">Next question</button>
+                <div class="session-modes__footer">
+                    <button id="startQuestionBtn" class="primary-btn" type="button">Send question</button>
+                    <p class="session-modes__status" id="modeStatus">Select how you'd like to start the next question.</p>
                 </div>
             </div>
         </section>
@@ -151,8 +176,25 @@
                 <h2 id="studentModalTitle">Student canvas</h2>
                 <p id="studentModalSubtitle" class="student-modal__meta"></p>
             </header>
+            <div class="student-modal__tools" role="group" aria-label="Teacher pen controls">
+                <button id="teacherPenToggle" class="teacher-pen__toggle" type="button" aria-pressed="false">
+                    <span class="teacher-pen__toggle-icon" aria-hidden="true">✏️</span>
+                    <span class="teacher-pen__toggle-label">Enable pen</span>
+                </button>
+                <div class="teacher-pen__palette" aria-hidden="true">
+                    <span class="teacher-pen__label">Pen colour</span>
+                    <div class="teacher-pen__swatches">
+                        <button class="teacher-pen__swatch is-active" type="button" data-pen-colour="#ef4444" aria-label="Use red pen" aria-pressed="true" style="color: #ef4444"></button>
+                        <button class="teacher-pen__swatch" type="button" data-pen-colour="#1d4ed8" aria-label="Use blue pen" aria-pressed="false" style="color: #1d4ed8"></button>
+                        <button class="teacher-pen__swatch" type="button" data-pen-colour="#16a34a" aria-label="Use green pen" aria-pressed="false" style="color: #16a34a"></button>
+                        <button class="teacher-pen__swatch" type="button" data-pen-colour="#111827" aria-label="Use black pen" aria-pressed="false" style="color: #111827"></button>
+                    </div>
+                </div>
+                <button id="teacherPenClear" class="teacher-pen__clear" type="button" disabled>Clear pen</button>
+            </div>
             <div class="student-modal__canvas">
                 <canvas id="studentModalCanvas" width="1024" height="768"></canvas>
+                <canvas id="teacherOverlayCanvas" width="1024" height="768" aria-hidden="true"></canvas>
             </div>
         </div>
     </div>

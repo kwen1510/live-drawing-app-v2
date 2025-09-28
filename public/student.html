@@ -89,6 +89,12 @@
         </header>
         <main class="student-canvas" aria-label="Drawing surface">
             <div class="student-canvas__surface">
+                <div class="student-waiting student-waiting--visible" id="waitingOverlay">
+                    <div class="student-waiting__card">
+                        <span class="student-waiting__title" id="waitingLabel">Waiting for your teacher to start</span>
+                        <p class="student-waiting__subtitle" id="waitingSubtitle">Keep your stylus ready. The next question will appear here.</p>
+                    </div>
+                </div>
                 <canvas id="drawingCanvas" aria-label="Drawing canvas"></canvas>
             </div>
         </main>
