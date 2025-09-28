@@ -112,6 +112,12 @@ const canvasSize = {
     height: 1
 };
 
+const BASE_CANVAS_RATIO = BASE_CANVAS_WIDTH / BASE_CANVAS_HEIGHT;
+
+const canvasDisplayState = {
+    letterboxed: false
+};
+
 if (welcomeHeading) {
     welcomeHeading.textContent = username ? `Hi, ${username}!` : 'Student canvas';
 }
@@ -125,6 +131,25 @@ initialiseCanvas();
 setupToolbox();
 setupClearButton();
 setupRealtime();
+
+function hasActiveBackgroundContent() {
+    return Boolean(
+        (typeof backgroundImageData === 'string' && backgroundImageData.length > 0)
+            || backgroundImageElement
+            || backgroundVectorDefinition
+    );
+}
+
+function updateCanvasLetterboxing() {
+    const shouldLetterbox = hasActiveBackgroundContent();
+    canvasDisplayState.letterboxed = shouldLetterbox;
+
+    if (studentCanvasSurface) {
+        studentCanvasSurface.classList.toggle('student-canvas__surface--letterboxed', shouldLetterbox);
+    }
+
+    requestAnimationFrame(resizeCanvas);
+}
 
 function setupViewportSizing() {
     if (!studentShellWrap || !studentTopbar || !studentCanvasContainer) {
@@ -1372,8 +1397,26 @@ function resizeCanvas() {
         return;
     }
 
-    const displayWidth = Math.max(1, containerRect.width);
-    const displayHeight = Math.max(1, containerRect.height);
+    const containerWidth = Math.max(1, containerRect.width);
+    const containerHeight = Math.max(1, containerRect.height);
+
+    let displayWidth = containerWidth;
+    let displayHeight = containerHeight;
+
+    if (canvasDisplayState.letterboxed && Number.isFinite(BASE_CANVAS_RATIO) && BASE_CANVAS_RATIO > 0) {
+        const containerRatio = containerWidth / containerHeight;
+
+        if (containerRatio > BASE_CANVAS_RATIO) {
+            displayHeight = containerHeight;
+            displayWidth = displayHeight * BASE_CANVAS_RATIO;
+        } else {
+            displayWidth = containerWidth;
+            displayHeight = displayWidth / BASE_CANVAS_RATIO;
+        }
+
+        displayWidth = Math.min(displayWidth, containerWidth);
+        displayHeight = Math.min(displayHeight, containerHeight);
+    }
 
     canvas.style.width = `${displayWidth}px`;
     canvas.style.height = `${displayHeight}px`;
@@ -1448,24 +1491,27 @@ function applyBackgroundVectors(definition) {
             backgroundVectorDefinition = null;
             redrawCanvas();
         }
+        updateCanvasLetterboxing();
         return;
     }
 
     if (vectorDefinitionsEqual(backgroundVectorDefinition, normalised)) {
+        updateCanvasLetterboxing();
         return;
     }
 
     backgroundVectorDefinition = normalised;
     redrawCanvas();
+    updateCanvasLetterboxing();
 }
 
 function clearBackgroundVectors() {
-    if (!backgroundVectorDefinition) {
-        return;
+    const hadBackground = Boolean(backgroundVectorDefinition);
+    if (hadBackground) {
+        backgroundVectorDefinition = null;
+        redrawCanvas();
     }
-
-    backgroundVectorDefinition = null;
-    redrawCanvas();
+    updateCanvasLetterboxing();
 }
 
 function drawBackgroundVectors(definition) {
@@ -2014,6 +2060,8 @@ function applyBackgroundImage(imageData) {
     const image = new Image();
     backgroundImageElement = image;
 
+    updateCanvasLetterboxing();
+
     image.onload = () => {
         if (backgroundImageElement === image) {
             redrawCanvas();
@@ -2025,6 +2073,7 @@ function applyBackgroundImage(imageData) {
             backgroundImageData = null;
             backgroundImageElement = null;
             redrawCanvas();
+            updateCanvasLetterboxing();
         }
     };
 
@@ -2039,6 +2088,7 @@ function removeBackgroundImage() {
     backgroundImageData = null;
     backgroundImageElement = null;
     redrawCanvas();
+    updateCanvasLetterboxing();
 }
 
 function handleNextQuestionFromTeacher(nextQuestionNumber = null) {

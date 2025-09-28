@@ -1947,6 +1947,16 @@ body.student-shell * {
     justify-content: stretch;
 }
 
+.student-canvas__surface--letterboxed {
+    background: #000000;
+    align-items: center;
+    justify-content: center;
+}
+
+.student-canvas__surface--letterboxed canvas {
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
+}
+
 .student-canvas__surface canvas {
     display: block;
     touch-action: none;
