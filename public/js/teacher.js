@@ -13,6 +13,8 @@ const referencePreview = document.getElementById('referencePreview');
 const referencePreviewImage = document.getElementById('referencePreviewImage');
 const referenceFileName = document.getElementById('referenceFileName');
 const startQuestionBtn = document.getElementById('startQuestionBtn');
+const startQuestionLabel = document.getElementById('startQuestionLabel');
+const startQuestionNumber = document.getElementById('startQuestionNumber');
 const modeStatus = document.getElementById('modeStatus');
 const presetSummary = document.getElementById('presetSummary');
 const modeChoiceButtons = Array.from(document.querySelectorAll('[data-mode-choice]'));
@@ -23,10 +25,20 @@ const studentModalTitle = document.getElementById('studentModalTitle');
 const studentModalSubtitle = document.getElementById('studentModalSubtitle');
 const studentModalClose = document.getElementById('studentModalClose');
 const teacherOverlayCanvas = document.getElementById('teacherOverlayCanvas');
+const teacherToolbar = document.querySelector('.teacher-toolbar');
 const teacherPenToggle = document.getElementById('teacherPenToggle');
-const teacherPenClear = document.getElementById('teacherPenClear');
-const teacherPenPalette = document.querySelector('.teacher-pen__palette');
+const teacherClearButton = document.getElementById('teacherClearButton');
 const teacherPenSwatches = Array.from(document.querySelectorAll('[data-pen-colour]'));
+const teacherToolButtons = Array.from(document.querySelectorAll('[data-teacher-tool]'));
+const teacherBrushButton = document.getElementById('teacherBrushSizeButton');
+const teacherBrushPopover = document.getElementById('teacherBrushSizePopover');
+const teacherBrushSlider = document.getElementById('teacherBrushSizeSlider');
+const teacherBrushValueLabel = document.getElementById('teacherBrushSizeValue');
+const teacherBrushIndicator = document.getElementById('teacherBrushSizeIndicator');
+const teacherBrushPreviewDot = document.getElementById('teacherBrushPreviewDot');
+const teacherUndoButton = document.getElementById('teacherUndoButton');
+const teacherRedoButton = document.getElementById('teacherRedoButton');
+const teacherStylusModeButton = document.getElementById('teacherStylusModeButton');
 const openModesBtn = document.getElementById('openModesBtn');
 const modeModal = document.getElementById('modeModal');
 const modeModalClose = document.getElementById('modeModalClose');
@@ -141,8 +153,26 @@ let teacherPenStudent = null;
 let teacherPenDrawing = false;
 let teacherPenCurrentPath = null;
 let teacherPenColour = '#ef4444';
-const TEACHER_PEN_WIDTH = 6;
+const TEACHER_TOOL_TYPES = Object.freeze({
+    PEN: 'pen',
+    ERASER: 'eraser',
+    HIGHLIGHTER: 'highlighter'
+});
+const TEACHER_DEFAULT_BRUSH_SIZE = 6;
+const TEACHER_MIN_BRUSH_SIZE = 1;
+const TEACHER_MAX_BRUSH_SIZE = 12;
+const TEACHER_HIGHLIGHTER_MULTIPLIER = 2.2;
+const TEACHER_HIGHLIGHTER_OPACITY = 0.35;
+const TEACHER_HIGHLIGHTER_COLOUR = '#facc15';
+const TEACHER_MAX_STROKE_WIDTH = TEACHER_MAX_BRUSH_SIZE * TEACHER_HIGHLIGHTER_MULTIPLIER;
+const TEACHER_BRUSH_STORAGE_KEY = 'teacher-brush-size';
+const TEACHER_STYLUS_STORAGE_KEY = 'teacher-stylus-only';
+let teacherActiveTool = TEACHER_TOOL_TYPES.PEN;
+let teacherBrushSize = readTeacherBrushSize();
+let teacherStylusOnly = readTeacherStylusPreference();
 let teacherPenControlsReady = false;
+let teacherBrushPopoverOpen = false;
+let teacherBrushPopoverReturnFocus = null;
 const presenceKey = `teacher-${Math.random().toString(36).slice(2, 10)}`;
 const students = new Map();
 const GRID_STORAGE_KEY = 'teacher-grid-columns';
@@ -154,6 +184,10 @@ const reliableEventLog = [];
 const CHANNEL_RECONNECT_DELAY = 2000;
 let channelReconnectTimer = null;
 let isReconnecting = false;
+
+let teacherAnnotationBroadcastTimer = null;
+let teacherAnnotationBroadcastPendingStudent = null;
+let teacherAnnotationBroadcastReason = 'update';
 
 const sessionState = {
     questionNumber: 0,
@@ -506,6 +540,10 @@ function wireChannelEvents() {
                 sendBackgroundToStudent(payload.username);
             }
             sendSessionSnapshot(payload.username);
+            const student = students.get(payload.username);
+            if (student) {
+                sendTeacherAnnotationsToStudent(student, 'sync');
+            }
         }
     });
 
@@ -521,6 +559,10 @@ function wireChannelEvents() {
 
         sendBackgroundToStudent(username);
         sendSessionSnapshot(username, afterSequence);
+        const student = students.get(username);
+        if (student) {
+            sendTeacherAnnotationsToStudent(student, 'sync');
+        }
     });
 
     channel.on('broadcast', { event: 'draw_batch' }, ({ payload }) => {
@@ -559,6 +601,10 @@ function handlePresenceSync() {
                 if (isNew) {
                     requestStudentData(entry.username);
                     sendSessionSnapshot(entry.username);
+                    const student = students.get(entry.username);
+                    if (student) {
+                        sendTeacherAnnotationsToStudent(student, 'sync');
+                    }
                 }
             }
         });
@@ -633,6 +679,7 @@ function ensureStudentCard(username) {
     ctx.scale(scaleRatio, scaleRatio);
 
     const student = {
+        username,
         container,
         canvas,
         ctx,
@@ -895,27 +942,92 @@ function setupTeacherPenControls() {
         setTeacherPenActive(!teacherPenActive);
     });
 
-    if (Array.isArray(teacherPenSwatches)) {
-        teacherPenSwatches.forEach((swatch) => {
-            if (!swatch) {
-                return;
+    teacherPenSwatches.forEach((swatch) => {
+        if (!swatch) {
+            return;
+        }
+        swatch.addEventListener('click', () => {
+            const colour = swatch.dataset.penColour;
+            if (colour) {
+                setTeacherPenColour(colour);
             }
-            swatch.addEventListener('click', () => {
-                const colour = swatch.dataset.penColour;
-                if (colour) {
-                    setTeacherPenColour(colour);
-                }
-            });
+        });
+    });
+
+    teacherToolButtons.forEach((button) => {
+        const tool = button?.dataset?.teacherTool;
+        if (!tool) {
+            return;
+        }
+        button.addEventListener('click', () => {
+            setTeacherTool(tool);
+        });
+    });
+
+    if (teacherBrushButton && teacherBrushPopover) {
+        teacherBrushButton.addEventListener('click', () => {
+            toggleTeacherBrushPopover();
         });
     }
 
-    if (teacherPenClear) {
-        teacherPenClear.addEventListener('click', () => {
+    if (teacherBrushSlider) {
+        teacherBrushSlider.addEventListener('input', (event) => {
+            const value = Number(event.target.value);
+            setTeacherBrushSize(value, { updateSlider: false });
+        });
+    }
+
+    if (teacherUndoButton) {
+        teacherUndoButton.addEventListener('click', () => {
+            undoTeacherAnnotation();
+        });
+    }
+
+    if (teacherRedoButton) {
+        teacherRedoButton.addEventListener('click', () => {
+            redoTeacherAnnotation();
+        });
+    }
+
+    if (teacherClearButton) {
+        teacherClearButton.addEventListener('click', () => {
             clearTeacherPenAnnotations();
         });
     }
 
+    if (teacherStylusModeButton) {
+        teacherStylusModeButton.addEventListener('click', () => {
+            setTeacherStylusOnly(!teacherStylusOnly);
+        });
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && teacherBrushPopoverOpen) {
+            closeTeacherBrushPopover();
+        }
+    });
+
+    document.addEventListener('pointerdown', (event) => {
+        if (!teacherBrushPopoverOpen || !teacherBrushPopover) {
+            return;
+        }
+        const target = event.target;
+        if (!(target instanceof Node)) {
+            return;
+        }
+        if (teacherBrushPopover.contains(target)) {
+            return;
+        }
+        if (teacherBrushButton && teacherBrushButton.contains(target)) {
+            return;
+        }
+        closeTeacherBrushPopover();
+    });
+
     setTeacherPenColour(teacherPenColour);
+    setTeacherTool(teacherActiveTool);
+    setTeacherBrushSize(teacherBrushSize, { updateSlider: true, silent: true });
+    setTeacherStylusOnly(teacherStylusOnly, { persist: false, silent: true });
     teacherPenControlsReady = true;
     updateTeacherPenUi();
     renderTeacherAnnotations();
@@ -928,6 +1040,7 @@ function setTeacherPenActive(active) {
     if (!teacherPenActive) {
         teacherPenDrawing = false;
         teacherPenCurrentPath = null;
+        closeTeacherBrushPopover();
     }
 
     if (teacherOverlayCanvas) {
@@ -945,43 +1058,407 @@ function setTeacherPenColour(colour) {
 
     teacherPenColour = colour;
 
-    if (Array.isArray(teacherPenSwatches)) {
-        teacherPenSwatches.forEach((swatch) => {
-            if (!swatch) {
-                return;
-            }
-            const isActive = swatch.dataset.penColour === colour;
-            swatch.classList.toggle('is-active', isActive);
-            swatch.setAttribute('aria-pressed', String(isActive));
-        });
+    teacherPenSwatches.forEach((swatch) => {
+        if (!swatch) {
+            return;
+        }
+        const isActive = swatch.dataset.penColour === colour;
+        swatch.classList.toggle('is-active', isActive);
+        swatch.setAttribute('aria-pressed', String(isActive));
+    });
+
+    updateTeacherBrushUi({ updateSlider: false });
+}
+
+function setTeacherTool(tool) {
+    if (typeof tool !== 'string') {
+        return;
     }
+
+    const normalised = tool.toLowerCase();
+    if (!Object.values(TEACHER_TOOL_TYPES).includes(normalised)) {
+        return;
+    }
+
+    teacherActiveTool = normalised;
+
+    teacherToolButtons.forEach((button) => {
+        if (!button) {
+            return;
+        }
+        const isActive = button.dataset.teacherTool === normalised;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
+
+    updateTeacherBrushUi({ updateSlider: false });
+    updateTeacherPenUi();
 }
 
 function updateTeacherPenUi() {
     const hasStudent = Boolean(teacherPenStudent);
     const toggleActive = teacherPenActive && hasStudent;
+    const annotations = hasStudent && Array.isArray(teacherPenStudent.teacherAnnotations)
+        ? teacherPenStudent.teacherAnnotations
+        : [];
+    const redoStack = hasStudent && Array.isArray(teacherPenStudent.teacherRedoStack)
+        ? teacherPenStudent.teacherRedoStack
+        : [];
+    const hasAnnotations = annotations.length > 0;
+    const hasRedo = redoStack.length > 0;
 
     if (teacherPenToggle) {
         teacherPenToggle.disabled = !hasStudent;
         teacherPenToggle.setAttribute('aria-pressed', String(toggleActive));
         teacherPenToggle.classList.toggle('is-disabled', !hasStudent);
-        const label = teacherPenToggle.querySelector('.teacher-pen__toggle-label');
-        if (label) {
-            label.textContent = toggleActive ? 'Disable pen' : 'Enable pen';
+        teacherPenToggle.classList.toggle('is-active', toggleActive);
+        const toggleLabel = toggleActive ? 'Stop annotating' : 'Start annotating';
+        teacherPenToggle.setAttribute('aria-label', toggleLabel);
+        if (teacherPenToggle.dataset) {
+            teacherPenToggle.dataset.tooltip = toggleLabel;
         }
     }
 
-    if (teacherPenPalette) {
-        teacherPenPalette.setAttribute('aria-hidden', String(!hasStudent));
-        teacherPenPalette.classList.toggle('is-muted', hasStudent && !toggleActive);
+    if (teacherToolbar) {
+        teacherToolbar.classList.toggle('is-disabled', !hasStudent);
     }
 
-    const hasAnnotations = hasStudent && Array.isArray(teacherPenStudent.teacherAnnotations)
-        && teacherPenStudent.teacherAnnotations.length > 0;
+    teacherPenSwatches.forEach((swatch) => {
+        if (!swatch) {
+            return;
+        }
+        const isActive = swatch.dataset.penColour === teacherPenColour;
+        swatch.classList.toggle('is-active', isActive);
+        swatch.setAttribute('aria-pressed', String(isActive));
+        swatch.disabled = !hasStudent;
+        swatch.classList.toggle('is-muted', hasStudent && !toggleActive);
+    });
 
-    if (teacherPenClear) {
-        teacherPenClear.disabled = !hasAnnotations;
+    teacherToolButtons.forEach((button) => {
+        if (!button) {
+            return;
+        }
+        const isActive = button.dataset.teacherTool === teacherActiveTool;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+        button.disabled = !hasStudent;
+        button.classList.toggle('is-muted', hasStudent && !toggleActive);
+    });
+
+    if (teacherBrushButton) {
+        teacherBrushButton.disabled = !hasStudent;
+        teacherBrushButton.classList.toggle('is-muted', hasStudent && !toggleActive);
+        teacherBrushButton.setAttribute('aria-expanded', teacherBrushPopoverOpen ? 'true' : 'false');
     }
+
+    if (teacherStylusModeButton) {
+        const stylusLabel = getTeacherStylusModeLabel();
+        teacherStylusModeButton.disabled = !hasStudent;
+        teacherStylusModeButton.classList.toggle('is-active', teacherStylusOnly);
+        teacherStylusModeButton.classList.toggle('is-muted', hasStudent && !toggleActive);
+        teacherStylusModeButton.setAttribute('aria-pressed', teacherStylusOnly ? 'true' : 'false');
+        teacherStylusModeButton.setAttribute('aria-label', stylusLabel);
+        if (teacherStylusModeButton.dataset) {
+            teacherStylusModeButton.dataset.tooltip = stylusLabel;
+        }
+    }
+
+    if (teacherUndoButton) {
+        teacherUndoButton.disabled = !toggleActive || !hasAnnotations;
+    }
+
+    if (teacherRedoButton) {
+        teacherRedoButton.disabled = !toggleActive || !hasRedo;
+    }
+
+    if (teacherClearButton) {
+        teacherClearButton.disabled = !hasAnnotations;
+    }
+
+    updateTeacherBrushUi({ updateSlider: true });
+}
+
+function setTeacherBrushSize(value, options = {}) {
+    const { updateSlider = true, silent = false } = options || {};
+    const fallback = Number.isFinite(teacherBrushSize) ? teacherBrushSize : TEACHER_DEFAULT_BRUSH_SIZE;
+    const numeric = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+    const clamped = clampTeacherBrushSize(numeric);
+
+    teacherBrushSize = clamped;
+    updateTeacherBrushUi({ updateSlider });
+
+    if (!silent) {
+        writeTeacherBrushSize(clamped);
+    }
+}
+
+function updateTeacherBrushUi({ updateSlider = true } = {}) {
+    const brushSize = clampTeacherBrushSize(teacherBrushSize);
+    const formatted = formatTeacherBrushSize(brushSize);
+    const previewSize = getTeacherBrushPreviewSize(brushSize);
+    const previewColour = getTeacherBrushPreviewColour();
+    const previewOpacity = getTeacherBrushPreviewOpacity();
+
+    if (teacherBrushSlider) {
+        if (updateSlider) {
+            const currentValue = Number(teacherBrushSlider.value);
+            if (!Number.isFinite(currentValue) || Math.abs(currentValue - brushSize) > 0.05) {
+                teacherBrushSlider.value = formatted;
+            }
+        }
+        teacherBrushSlider.setAttribute('aria-valuenow', formatted);
+        teacherBrushSlider.setAttribute('aria-valuetext', `${formatted} pixels`);
+    }
+
+    if (teacherBrushValueLabel) {
+        teacherBrushValueLabel.textContent = `${formatted} px`;
+    }
+
+    if (teacherBrushPreviewDot) {
+        teacherBrushPreviewDot.style.setProperty('--brush-preview-size', `${previewSize}px`);
+        teacherBrushPreviewDot.style.background = previewColour;
+        teacherBrushPreviewDot.style.opacity = String(previewOpacity);
+    }
+
+    if (teacherBrushIndicator) {
+        const indicatorSize = Math.max(8, Math.round(previewSize * 0.65));
+        teacherBrushIndicator.style.setProperty('--brush-preview-size', `${indicatorSize}px`);
+        teacherBrushIndicator.style.background = previewColour;
+        teacherBrushIndicator.style.opacity = String(previewOpacity);
+        teacherBrushIndicator.classList.toggle('is-eraser', teacherActiveTool === TEACHER_TOOL_TYPES.ERASER);
+        teacherBrushIndicator.classList.toggle('is-highlighter', teacherActiveTool === TEACHER_TOOL_TYPES.HIGHLIGHTER);
+    }
+
+    if (teacherBrushButton) {
+        teacherBrushButton.setAttribute('aria-expanded', teacherBrushPopoverOpen ? 'true' : 'false');
+    }
+}
+
+function toggleTeacherBrushPopover() {
+    if (teacherBrushPopoverOpen) {
+        closeTeacherBrushPopover();
+    } else {
+        openTeacherBrushPopover();
+    }
+}
+
+function openTeacherBrushPopover() {
+    if (!teacherBrushPopover || !teacherBrushButton || !teacherPenStudent) {
+        return;
+    }
+
+    teacherBrushPopover.hidden = false;
+    teacherBrushPopoverOpen = true;
+    teacherBrushPopoverReturnFocus = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : teacherBrushButton;
+    teacherBrushButton.setAttribute('aria-expanded', 'true');
+    updateTeacherBrushUi({ updateSlider: true });
+    if (teacherBrushSlider) {
+        teacherBrushSlider.focus();
+    } else {
+        teacherBrushPopover.focus?.();
+    }
+}
+
+function closeTeacherBrushPopover() {
+    if (!teacherBrushPopoverOpen || !teacherBrushPopover) {
+        return;
+    }
+
+    teacherBrushPopover.hidden = true;
+    teacherBrushPopoverOpen = false;
+
+    if (teacherBrushButton) {
+        teacherBrushButton.setAttribute('aria-expanded', 'false');
+    }
+
+    const returnTarget = teacherBrushPopoverReturnFocus;
+    teacherBrushPopoverReturnFocus = null;
+    if (returnTarget && typeof returnTarget.focus === 'function') {
+        setTimeout(() => {
+            returnTarget.focus();
+        }, 0);
+    }
+}
+
+function undoTeacherAnnotation() {
+    if (!teacherPenStudent || !Array.isArray(teacherPenStudent.teacherAnnotations)) {
+        return;
+    }
+
+    if (teacherPenStudent.teacherAnnotations.length === 0) {
+        return;
+    }
+
+    const removed = teacherPenStudent.teacherAnnotations.pop();
+    if (!removed) {
+        return;
+    }
+
+    if (!Array.isArray(teacherPenStudent.teacherRedoStack)) {
+        teacherPenStudent.teacherRedoStack = [];
+    }
+    teacherPenStudent.teacherRedoStack.push(removed);
+
+    renderTeacherAnnotations();
+    updateTeacherPenUi();
+    queueTeacherAnnotationBroadcast('update', true);
+}
+
+function redoTeacherAnnotation() {
+    if (!teacherPenStudent || !Array.isArray(teacherPenStudent.teacherRedoStack)) {
+        return;
+    }
+
+    if (teacherPenStudent.teacherRedoStack.length === 0) {
+        return;
+    }
+
+    const restored = teacherPenStudent.teacherRedoStack.pop();
+    if (!restored) {
+        return;
+    }
+
+    if (!Array.isArray(teacherPenStudent.teacherAnnotations)) {
+        teacherPenStudent.teacherAnnotations = [];
+    }
+
+    teacherPenStudent.teacherAnnotations.push(restored);
+
+    renderTeacherAnnotations();
+    updateTeacherPenUi();
+    queueTeacherAnnotationBroadcast('update', true);
+}
+
+function createTeacherStroke() {
+    const baseSize = clampTeacherBrushSize(teacherBrushSize);
+    const isEraser = teacherActiveTool === TEACHER_TOOL_TYPES.ERASER;
+    const isHighlighter = teacherActiveTool === TEACHER_TOOL_TYPES.HIGHLIGHTER;
+
+    const width = isHighlighter
+        ? clampNumber(baseSize * TEACHER_HIGHLIGHTER_MULTIPLIER, TEACHER_MIN_BRUSH_SIZE, TEACHER_MAX_STROKE_WIDTH)
+        : baseSize;
+
+    return {
+        color: isEraser
+            ? '#000000'
+            : (isHighlighter ? TEACHER_HIGHLIGHTER_COLOUR : teacherPenColour),
+        width,
+        erase: isEraser,
+        opacity: isHighlighter ? TEACHER_HIGHLIGHTER_OPACITY : 1,
+        composite: isEraser ? 'destination-out' : 'source-over',
+        tool: teacherActiveTool,
+        points: []
+    };
+}
+
+function getTeacherBrushPreviewSize(value) {
+    const brushSize = clampTeacherBrushSize(value);
+    const range = TEACHER_MAX_BRUSH_SIZE - TEACHER_MIN_BRUSH_SIZE;
+    if (range <= 0) {
+        return 16;
+    }
+    return Math.round(((brushSize - TEACHER_MIN_BRUSH_SIZE) / range) * 28 + 10);
+}
+
+function getTeacherBrushPreviewColour() {
+    if (teacherActiveTool === TEACHER_TOOL_TYPES.ERASER) {
+        return '#ffffff';
+    }
+    if (teacherActiveTool === TEACHER_TOOL_TYPES.HIGHLIGHTER) {
+        return TEACHER_HIGHLIGHTER_COLOUR;
+    }
+    return teacherPenColour;
+}
+
+function getTeacherBrushPreviewOpacity() {
+    if (teacherActiveTool === TEACHER_TOOL_TYPES.HIGHLIGHTER) {
+        return clampNumber(TEACHER_HIGHLIGHTER_OPACITY + 0.25, 0.4, 1);
+    }
+    return 1;
+}
+
+function clampTeacherBrushSize(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return TEACHER_DEFAULT_BRUSH_SIZE;
+    }
+    return clampNumber(value, TEACHER_MIN_BRUSH_SIZE, TEACHER_MAX_BRUSH_SIZE);
+}
+
+function formatTeacherBrushSize(value) {
+    return clampTeacherBrushSize(value).toFixed(1);
+}
+
+function readTeacherBrushSize() {
+    try {
+        const stored = localStorage.getItem(TEACHER_BRUSH_STORAGE_KEY);
+        if (stored === null || stored === undefined) {
+            return TEACHER_DEFAULT_BRUSH_SIZE;
+        }
+        const parsed = Number(stored);
+        if (Number.isFinite(parsed)) {
+            return clampTeacherBrushSize(parsed);
+        }
+    } catch (_error) {
+        // Ignore storage read errors
+    }
+    return TEACHER_DEFAULT_BRUSH_SIZE;
+}
+
+function writeTeacherBrushSize(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return;
+    }
+
+    try {
+        localStorage.setItem(TEACHER_BRUSH_STORAGE_KEY, String(value));
+    } catch (_error) {
+        // Ignore storage write errors (e.g., private browsing)
+    }
+}
+
+function readTeacherStylusPreference() {
+    try {
+        const stored = localStorage.getItem(TEACHER_STYLUS_STORAGE_KEY);
+        if (stored === 'true') {
+            return true;
+        }
+        if (stored === 'false') {
+            return false;
+        }
+    } catch (_error) {
+        // Ignore storage read errors
+    }
+
+    return true;
+}
+
+function writeTeacherStylusPreference(value) {
+    try {
+        localStorage.setItem(TEACHER_STYLUS_STORAGE_KEY, value ? 'true' : 'false');
+    } catch (_error) {
+        // Ignore storage write errors
+    }
+}
+
+function setTeacherStylusOnly(active, options = {}) {
+    const { persist = true, silent = false } = options || {};
+    teacherStylusOnly = Boolean(active);
+
+    if (persist) {
+        writeTeacherStylusPreference(teacherStylusOnly);
+    }
+
+    if (!silent) {
+        updateTeacherPenUi();
+    }
+}
+
+function getTeacherStylusModeLabel() {
+    return teacherStylusOnly
+        ? 'Stylus mode (pen only)'
+        : 'Stylus mode (all inputs)';
 }
 
 function clearTeacherPenAnnotations() {
@@ -990,8 +1467,10 @@ function clearTeacherPenAnnotations() {
     }
 
     teacherPenStudent.teacherAnnotations = [];
+    teacherPenStudent.teacherRedoStack = [];
     renderTeacherAnnotations();
     updateTeacherPenUi();
+    queueTeacherAnnotationBroadcast('clear', true);
 }
 
 function renderTeacherAnnotations() {
@@ -1009,6 +1488,76 @@ function renderTeacherAnnotations() {
     teacherPenStudent.teacherAnnotations.forEach((path) => {
         drawSmoothStudentPath(teacherOverlayCtx, path);
     });
+
+    if (teacherPenStudent) {
+        drawStudentCanvas(teacherPenStudent);
+    }
+}
+
+function queueTeacherAnnotationBroadcast(reason = 'update', immediate = false) {
+    if (!teacherPenStudent) {
+        return;
+    }
+
+    if (immediate) {
+        flushTeacherAnnotationBroadcast(reason);
+        return;
+    }
+
+    teacherAnnotationBroadcastPendingStudent = teacherPenStudent;
+    teacherAnnotationBroadcastReason = reason || 'update';
+
+    if (teacherAnnotationBroadcastTimer) {
+        return;
+    }
+
+    const scheduleTimeout = typeof window !== 'undefined' && window.setTimeout
+        ? window.setTimeout.bind(window)
+        : setTimeout;
+
+    teacherAnnotationBroadcastTimer = scheduleTimeout(() => {
+        const target = teacherAnnotationBroadcastPendingStudent;
+        const sendReason = teacherAnnotationBroadcastReason;
+        teacherAnnotationBroadcastTimer = null;
+        teacherAnnotationBroadcastPendingStudent = null;
+        teacherAnnotationBroadcastReason = 'update';
+        if (target) {
+            sendTeacherAnnotationsToStudent(target, sendReason);
+        }
+    }, 80);
+}
+
+function flushTeacherAnnotationBroadcast(reason = 'update') {
+    if (teacherAnnotationBroadcastTimer) {
+        clearTimeout(teacherAnnotationBroadcastTimer);
+        teacherAnnotationBroadcastTimer = null;
+    }
+
+    teacherAnnotationBroadcastPendingStudent = null;
+    const target = teacherPenStudent;
+    teacherAnnotationBroadcastReason = 'update';
+
+    if (target) {
+        sendTeacherAnnotationsToStudent(target, reason);
+    }
+}
+
+function sendTeacherAnnotationsToStudent(student, reason = 'update') {
+    if (!student || !student.username) {
+        return;
+    }
+
+    const annotations = reason === 'clear'
+        ? []
+        : cloneTeacherAnnotations(student.teacherAnnotations);
+
+    const payload = {
+        target: student.username,
+        reason: reason || 'update',
+        annotations
+    };
+
+    safeSend('teacher_annotations', payload);
 }
 
 function attachTeacherPenToStudent(student) {
@@ -1027,15 +1576,28 @@ function attachTeacherPenToStudent(student) {
         teacherPenStudent.teacherAnnotations = [];
     }
 
+    if (!Array.isArray(teacherPenStudent.teacherRedoStack)) {
+        teacherPenStudent.teacherRedoStack = [];
+    } else {
+        teacherPenStudent.teacherRedoStack.length = 0;
+    }
+
     setTeacherPenActive(false);
     renderTeacherAnnotations();
     updateTeacherPenUi();
+    queueTeacherAnnotationBroadcast('sync', true);
 }
 
 function detachTeacherPenFromStudent() {
     teacherPenDrawing = false;
     teacherPenCurrentPath = null;
     teacherPenStudent = null;
+    if (teacherAnnotationBroadcastTimer) {
+        clearTimeout(teacherAnnotationBroadcastTimer);
+        teacherAnnotationBroadcastTimer = null;
+    }
+    teacherAnnotationBroadcastPendingStudent = null;
+    teacherAnnotationBroadcastReason = 'update';
     setTeacherPenActive(false);
     renderTeacherAnnotations();
     updateTeacherPenUi();
@@ -1046,16 +1608,23 @@ function handleTeacherPenPointerDown(event) {
         return;
     }
 
+    if (teacherStylusOnly && typeof event.pointerType === 'string' && event.pointerType && event.pointerType !== 'pen') {
+        return;
+    }
+
     event.preventDefault();
 
-    const path = {
-        color: teacherPenColour,
-        width: TEACHER_PEN_WIDTH,
-        erase: false,
-        points: []
-    };
+    const path = createTeacherStroke();
+
+    if (!Array.isArray(teacherPenStudent.teacherAnnotations)) {
+        teacherPenStudent.teacherAnnotations = [];
+    }
 
     teacherPenStudent.teacherAnnotations.push(path);
+    if (!Array.isArray(teacherPenStudent.teacherRedoStack)) {
+        teacherPenStudent.teacherRedoStack = [];
+    }
+    teacherPenStudent.teacherRedoStack.length = 0;
     teacherPenCurrentPath = path;
     teacherPenDrawing = true;
 
@@ -1105,6 +1674,7 @@ function handleTeacherPenPointerUp(event) {
     }
 
     updateTeacherPenUi();
+    queueTeacherAnnotationBroadcast('update', true);
 }
 
 function addTeacherPenPoint(event) {
@@ -1130,6 +1700,7 @@ function addTeacherPenPoint(event) {
 
     renderTeacherAnnotations();
     updateTeacherPenUi();
+    queueTeacherAnnotationBroadcast('update');
 }
 
 function setupModeModal() {
@@ -1553,11 +2124,24 @@ function updateStartButtonState() {
     }
 
     const nextNumber = sessionState.questionNumber + 1;
-    startQuestionBtn.textContent = channelReady
-        ? `Send question #${nextNumber}`
-        : 'Connecting…';
+    const isConnected = Boolean(channelReady);
+    const canSend = canSendQuestion();
 
-    startQuestionBtn.disabled = !channelReady || !canSendQuestion();
+    if (startQuestionLabel) {
+        startQuestionLabel.textContent = isConnected ? 'Send question' : 'Connecting…';
+    }
+
+    if (startQuestionNumber) {
+        if (isConnected) {
+            startQuestionNumber.textContent = `#${nextNumber}`;
+            startQuestionNumber.hidden = false;
+        } else {
+            startQuestionNumber.textContent = '';
+            startQuestionNumber.hidden = true;
+        }
+    }
+
+    startQuestionBtn.disabled = !isConnected || !canSend;
 }
 
 function refreshModeStatus() {
@@ -1864,6 +2448,7 @@ function clearAllStudentCanvases(background = null) {
         }
 
         student.backgroundVectors = backgroundVector ? cloneBackgroundVectorDefinition(backgroundVector) : null;
+        student.teacherAnnotations = [];
 
         drawStudentCanvas(student);
         student.updatedAt.textContent = 'Awaiting activity';
@@ -1871,6 +2456,7 @@ function clearAllStudentCanvases(background = null) {
         if (activeModalStudent === username) {
             updateStudentModalMeta(student);
         }
+        sendTeacherAnnotationsToStudent(student, 'clear');
     });
 }
 
@@ -1937,6 +2523,9 @@ function drawStudentCanvas(student) {
             resetCanvas(ctx, canvas);
             drawStudentBackground(ctx, student.backgroundImageElement, student.backgroundVectors);
             renderStudentPaths(ctx, student.paths);
+            if (ctx !== student.previewCtx) {
+                renderTeacherOverlay(ctx, student.teacherAnnotations);
+            }
         });
     };
 
@@ -1981,6 +2570,20 @@ function renderStudentPaths(ctx, paths) {
     });
 }
 
+function renderTeacherOverlay(ctx, annotations) {
+    if (!ctx || !Array.isArray(annotations) || annotations.length === 0) {
+        return;
+    }
+
+    ctx.save();
+    annotations.forEach((path) => {
+        if (path) {
+            drawSmoothStudentPath(ctx, path);
+        }
+    });
+    ctx.restore();
+}
+
 function drawSmoothStudentPath(ctx, path) {
     if (!path || !Array.isArray(path.points) || path.points.length === 0) {
         return;
@@ -1991,12 +2594,21 @@ function drawSmoothStudentPath(ctx, path) {
         return;
     }
 
-    const baseWidth = typeof path.width === 'number' && path.width > 0 ? path.width : 2.2;
+    const baseWidth = typeof path.width === 'number' && path.width > 0 ? path.width : TEACHER_MIN_BRUSH_SIZE;
     const erase = Boolean(path.erase);
     const strokeColor = erase ? '#000000' : (typeof path.color === 'string' ? path.color : '#111827');
+    const opacity = typeof path.opacity === 'number' && Number.isFinite(path.opacity)
+        ? clampNumber(path.opacity, 0.05, 1)
+        : 1;
+    const composite = erase
+        ? 'destination-out'
+        : (typeof path.composite === 'string' && path.composite.trim().length > 0
+            ? path.composite
+            : 'source-over');
 
     ctx.save();
-    ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
+    ctx.globalCompositeOperation = composite;
+    ctx.globalAlpha = opacity;
 
     if (points.length === 1) {
         const [point] = points;
@@ -2261,6 +2873,41 @@ function drawArrowHead(ctx, element) {
     ctx.closePath();
     ctx.fillStyle = element.fill || element.stroke || '#000000';
     ctx.fill();
+}
+
+function cloneTeacherAnnotations(annotations) {
+    if (!Array.isArray(annotations)) {
+        return [];
+    }
+
+    return annotations.map((path) => {
+        const points = Array.isArray(path?.points)
+            ? path.points.map((point) => (Array.isArray(point) ? [...point] : { ...point }))
+            : [];
+
+        const color = typeof path?.color === 'string' && path.color.trim().length > 0
+            ? path.color
+            : teacherPenColour;
+        const width = typeof path?.width === 'number' && Number.isFinite(path.width)
+            ? clampNumber(path.width, TEACHER_MIN_BRUSH_SIZE, TEACHER_MAX_STROKE_WIDTH)
+            : clampTeacherBrushSize(teacherBrushSize);
+        const erase = Boolean(path?.erase);
+        const opacity = typeof path?.opacity === 'number' && Number.isFinite(path.opacity)
+            ? clampNumber(path.opacity, 0, 1)
+            : (erase ? 1 : 1);
+        const composite = typeof path?.composite === 'string' && path.composite.trim().length > 0
+            ? path.composite
+            : (erase ? 'destination-out' : 'source-over');
+
+        return {
+            color,
+            width,
+            erase,
+            opacity,
+            composite,
+            points
+        };
+    }).filter((path) => Array.isArray(path.points) && path.points.length > 0);
 }
 
 function cloneBackgroundVectorDefinition(definition) {
