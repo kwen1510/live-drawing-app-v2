@@ -81,6 +81,7 @@ let backgroundImageData = null;
 let backgroundImageElement = null;
 let backgroundVectorDefinition = null;
 let teacherAnnotations = [];
+let teacherAnnotationCounter = 0;
 
 const reliableState = {
     lastSequence: readNumericSession(RELIABLE_SEQUENCE_STORAGE_KEY, 0),
@@ -902,28 +903,50 @@ function handleTeacherBackgroundEvent(payload = {}) {
 }
 
 function handleTeacherAnnotationsEvent(payload = {}) {
-    const { target, annotations, reason, reviewed } = payload || {};
+    const { target, annotations, reason, reviewed, delta } = payload || {};
 
     if (target && target !== username) {
         return;
     }
 
-    if (Array.isArray(annotations) && annotations.length > 0) {
-        teacherAnnotations = normaliseTeacherAnnotationPaths(annotations);
-    } else {
-        teacherAnnotations = [];
+    let replacedByDelta = false;
+    let stateChanged = false;
+
+    if (delta) {
+        const result = applyTeacherAnnotationDelta(delta);
+        if (result.applied) {
+            stateChanged = true;
+        }
+        if (result.replaced) {
+            replacedByDelta = true;
+        }
     }
 
-    if (reason === 'clear') {
-        teacherAnnotations = [];
+    if (!replacedByDelta) {
+        if (Array.isArray(annotations)) {
+            teacherAnnotations = normaliseTeacherAnnotationPaths(annotations);
+            stateChanged = true;
+        } else if (reason === 'clear' && !delta) {
+            teacherAnnotations = [];
+            stateChanged = true;
+        }
     }
 
-    redrawCanvas();
+    if (reason === 'clear' || (delta && delta.type === 'clear')) {
+        teacherAnnotations = [];
+        stateChanged = true;
+    }
+
+    if (stateChanged) {
+        redrawCanvas();
+    }
 
     if (typeof reviewed === 'boolean') {
         setTeacherReviewBadge(reviewed);
     } else {
-        setTeacherReviewBadge(Array.isArray(annotations) && annotations.length > 0);
+        const hasAnnotations = teacherAnnotations.length > 0
+            || (Array.isArray(annotations) && annotations.length > 0);
+        setTeacherReviewBadge(hasAnnotations);
     }
 }
 
@@ -2270,13 +2293,24 @@ function renderTeacherAnnotationPath(path) {
         return;
     }
 
+    const points = Array.isArray(path.points)
+        ? path.points.map((point) => ({
+            x: point.x * canvasSize.width,
+            y: point.y * canvasSize.height,
+            p: typeof point.p === 'number' && Number.isFinite(point.p) ? clamp(point.p, 0, 1) : 1
+        }))
+        : [];
+
+    const widthScale = canvasSize.width / BASE_CANVAS_WIDTH;
+    const scaledWidth = (typeof path.width === 'number' && Number.isFinite(path.width)
+        ? clamp(path.width, TEACHER_ANNOTATION_MIN_WIDTH, TEACHER_ANNOTATION_MAX_WIDTH)
+        : TEACHER_ANNOTATION_MIN_WIDTH) * widthScale;
+
     renderStoredPath({
         color: typeof path.color === 'string' && path.color.trim().length > 0
             ? path.color
             : TEACHER_ANNOTATION_DEFAULT_COLOR,
-        width: typeof path.width === 'number' && Number.isFinite(path.width)
-            ? clamp(path.width, TEACHER_ANNOTATION_MIN_WIDTH, TEACHER_ANNOTATION_MAX_WIDTH)
-            : TEACHER_ANNOTATION_MIN_WIDTH,
+        width: Math.max(TEACHER_ANNOTATION_MIN_WIDTH, scaledWidth),
         erase: Boolean(path.erase),
         opacity: typeof path.opacity === 'number' && Number.isFinite(path.opacity)
             ? clamp(path.opacity, 0, 1)
@@ -2284,9 +2318,7 @@ function renderTeacherAnnotationPath(path) {
         composite: typeof path.composite === 'string' && path.composite.trim().length > 0
             ? path.composite
             : (path.erase ? 'destination-out' : 'source-over'),
-        points: Array.isArray(path.points)
-            ? path.points
-            : []
+        points
     });
 }
 
@@ -2510,7 +2542,7 @@ function clonePaths(source) {
     }));
 }
 
-function normaliseTeacherAnnotationPaths(source) {
+function normaliseTeacherAnnotationPaths(source, size = {}) {
     if (!Array.isArray(source)) {
         return [];
     }
@@ -2521,7 +2553,7 @@ function normaliseTeacherAnnotationPaths(source) {
             : TEACHER_ANNOTATION_MIN_WIDTH;
 
         const points = Array.isArray(path?.points)
-            ? path.points.map((point) => (Array.isArray(point) ? [...point] : { ...point }))
+            ? path.points.map((point) => normaliseTeacherAnnotationPoint(point, size)).filter(Boolean)
             : [];
 
         const erase = Boolean(path?.erase);
@@ -2533,6 +2565,7 @@ function normaliseTeacherAnnotationPaths(source) {
             : (erase ? 'destination-out' : 'source-over');
 
         return {
+            id: normaliseTeacherAnnotationId(path),
             color: typeof path?.color === 'string' && path.color.trim().length > 0
                 ? path.color
                 : TEACHER_ANNOTATION_DEFAULT_COLOR,
@@ -2543,6 +2576,184 @@ function normaliseTeacherAnnotationPaths(source) {
             points
         };
     }).filter((entry) => entry.points.length > 0);
+}
+
+function createStudentTeacherAnnotationId() {
+    teacherAnnotationCounter += 1;
+    return `tap-student-${Date.now().toString(36)}-${teacherAnnotationCounter.toString(36)}`;
+}
+
+function normaliseTeacherAnnotationId(path) {
+    if (typeof path?.id === 'string' && path.id.trim().length > 0) {
+        return path.id.trim();
+    }
+
+    if (typeof path?.id === 'number' && Number.isFinite(path.id)) {
+        return `tap-${Math.floor(path.id)}`;
+    }
+
+    return createStudentTeacherAnnotationId();
+}
+
+function normaliseTeacherAnnotationPoint(point, size = {}) {
+    const width = Number(size?.width);
+    const height = Number(size?.height);
+    const baseWidth = Number.isFinite(width) && width > 0 ? width : BASE_CANVAS_WIDTH;
+    const baseHeight = Number.isFinite(height) && height > 0 ? height : BASE_CANVAS_HEIGHT;
+
+    let rawX;
+    let rawY;
+    let rawP;
+
+    if (Array.isArray(point)) {
+        [rawX, rawY, rawP] = point;
+    } else if (point && typeof point === 'object') {
+        rawX = point.x;
+        rawY = point.y;
+        rawP = point.p;
+    } else {
+        return null;
+    }
+
+    if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) {
+        return null;
+    }
+
+    let normalisedX = rawX;
+    let normalisedY = rawY;
+
+    if (normalisedX > 1 || normalisedY > 1) {
+        normalisedX = normalisedX / baseWidth;
+        normalisedY = normalisedY / baseHeight;
+    }
+
+    normalisedX = clamp(normalisedX, 0, 1);
+    normalisedY = clamp(normalisedY, 0, 1);
+
+    const pressure = Number.isFinite(rawP) ? clamp(rawP, 0, 1) : 1;
+
+    return {
+        x: normalisedX,
+        y: normalisedY,
+        p: pressure
+    };
+}
+
+function deserialiseTeacherAnnotationPoints(points, size = {}) {
+    if (!Array.isArray(points)) {
+        return [];
+    }
+
+    return points
+        .map((point) => normaliseTeacherAnnotationPoint(point, size))
+        .filter(Boolean);
+}
+
+function findTeacherAnnotationIndexById(id) {
+    if (typeof id !== 'string' || id.trim().length === 0) {
+        return -1;
+    }
+
+    for (let i = 0; i < teacherAnnotations.length; i += 1) {
+        if (teacherAnnotations[i] && teacherAnnotations[i].id === id) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+function applyTeacherAnnotationDelta(delta) {
+    if (!delta || typeof delta !== 'object') {
+        return { applied: false, replaced: false };
+    }
+
+    const type = typeof delta.type === 'string' ? delta.type : '';
+
+    if (type === 'clear') {
+        teacherAnnotations = [];
+        return { applied: true, replaced: true };
+    }
+
+    if (type === 'replace') {
+        const next = Array.isArray(delta.annotations)
+            ? normaliseTeacherAnnotationPaths(delta.annotations, delta.size)
+            : [];
+        teacherAnnotations = next;
+        return { applied: true, replaced: true };
+    }
+
+    if (type !== 'operations') {
+        return { applied: false, replaced: false };
+    }
+
+    const operations = Array.isArray(delta.operations) ? delta.operations : [];
+    if (operations.length === 0) {
+        return { applied: false, replaced: false };
+    }
+
+    const width = Number(delta?.size?.width);
+    const height = Number(delta?.size?.height);
+    const baseSize = {
+        width: Number.isFinite(width) && width > 0 ? width : BASE_CANVAS_WIDTH,
+        height: Number.isFinite(height) && height > 0 ? height : BASE_CANVAS_HEIGHT
+    };
+
+    let changed = false;
+
+    operations.forEach((operation) => {
+        if (!operation || typeof operation !== 'object') {
+            return;
+        }
+
+        switch (operation.type) {
+            case 'remove_path': {
+                const fallbackIndex = findTeacherAnnotationIndexById(operation.id);
+                const index = typeof operation.index === 'number' && Number.isFinite(operation.index)
+                    ? Math.max(0, Math.min(Math.floor(operation.index), teacherAnnotations.length - 1))
+                    : fallbackIndex;
+                if (index !== -1 && index < teacherAnnotations.length) {
+                    teacherAnnotations.splice(index, 1);
+                    changed = true;
+                } else if (fallbackIndex !== -1) {
+                    teacherAnnotations.splice(fallbackIndex, 1);
+                    changed = true;
+                }
+                break;
+            }
+            case 'add_path': {
+                const path = operation.path ? normaliseTeacherAnnotationPaths([operation.path], baseSize)[0] : null;
+                if (path) {
+                    const insertIndex = typeof operation.index === 'number' && Number.isFinite(operation.index)
+                        ? Math.max(0, Math.min(Math.floor(operation.index), teacherAnnotations.length))
+                        : teacherAnnotations.length;
+                    teacherAnnotations.splice(insertIndex, 0, path);
+                    changed = true;
+                }
+                break;
+            }
+            case 'append_points': {
+                const index = findTeacherAnnotationIndexById(operation.id);
+                if (index === -1) {
+                    break;
+                }
+                const path = teacherAnnotations[index];
+                const newPoints = deserialiseTeacherAnnotationPoints(operation.points, baseSize);
+                if (newPoints.length > 0) {
+                    if (!Array.isArray(path.points)) {
+                        path.points = [];
+                    }
+                    path.points.push(...newPoints);
+                    changed = true;
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    });
+
+    return { applied: changed, replaced: false };
 }
 
 function trackReliableSequence(payload = {}) {
