@@ -556,6 +556,8 @@ input[type="range"]::-moz-range-thumb {
     min-height: 0;
     width: min(100%, 420px);
     aspect-ratio: 4 / 3;
+    display: grid;
+    place-items: center;
 }
 
 .mode-panel__preview--image img {
@@ -564,6 +566,25 @@ input[type="range"]::-moz-range-thumb {
     height: 100%;
     object-fit: cover;
     border-radius: 20px;
+}
+
+.image-preview__placeholder {
+    display: grid;
+    place-items: center;
+    text-align: center;
+    gap: 0.35rem;
+    padding: 1.6rem;
+    color: var(--text-muted);
+    max-width: 85%;
+}
+
+.image-preview__placeholder strong {
+    font-size: 1.05rem;
+    color: var(--text-strong);
+}
+
+.image-preview__placeholder[hidden] {
+    display: none;
 }
 
 .mode-panel__upload {
@@ -1006,13 +1027,13 @@ input[type="range"]::-moz-range-thumb {
 
 #teacherOverlayCanvas {
     position: absolute;
-    inset: clamp(0.75rem, 2vw, 1.5rem);
-    width: calc(100% - clamp(0.75rem, 2vw, 1.5rem) * 2);
-    height: calc(100% - clamp(0.75rem, 2vw, 1.5rem) * 2);
+    top: 0;
+    left: 0;
     display: block;
     border-radius: 16px;
     pointer-events: none;
     z-index: 1;
+    transform-origin: top left;
 }
 
 .student-modal__tools {
@@ -1031,12 +1052,12 @@ input[type="range"]::-moz-range-thumb {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
-    padding: 12px 18px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface) 96%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
+    gap: 14px;
+    padding: 16px 24px;
+    border-radius: 28px;
+    background: color-mix(in srgb, var(--surface) 90%, rgba(99, 102, 241, 0.08));
+    border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    box-shadow: 0 22px 48px rgba(15, 23, 42, 0.16);
 }
 
 .teacher-toolbar.is-disabled {
@@ -1045,50 +1066,61 @@ input[type="range"]::-moz-range-thumb {
 
 .teacher-toolbar__divider {
     width: 1px;
-    height: 34px;
-    background: color-mix(in srgb, var(--border) 78%, transparent);
+    height: 40px;
+    background: color-mix(in srgb, var(--border) 72%, transparent);
     border-radius: 999px;
 }
 
 .teacher-toolbar__button {
-    width: 40px;
-    height: 40px;
-    padding: 8px;
+    min-width: 44px;
+    height: 44px;
+    padding: 10px 18px;
     justify-content: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
 }
 
 .teacher-toolbar__button.teacher-toolbar__button--toggle,
 .teacher-toolbar__button.teacher-toolbar__button--popover {
     width: auto;
-    padding: 8px 16px;
-    gap: 10px;
+    padding: 10px 20px;
 }
 
 .teacher-toolbar__button.teacher-toolbar__button--popover[aria-expanded="true"] {
-    background: color-mix(in srgb, var(--primary) 18%, transparent);
-    border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+    background: color-mix(in srgb, var(--primary) 22%, transparent);
+    border-color: color-mix(in srgb, var(--primary) 55%, transparent);
     box-shadow: var(--shadow-tool-active);
 }
 
 .teacher-toolbar__button.teacher-toolbar__button--color {
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-width: 3px;
 }
 
 .teacher-toolbar__button.is-muted {
-    opacity: 0.45;
+    opacity: 0.5;
 }
 
 .teacher-toolbar__button.is-muted:hover {
-    background: color-mix(in srgb, var(--surface-muted) 40%, transparent);
+    background: color-mix(in srgb, var(--surface-muted) 38%, transparent);
     box-shadow: none;
 }
 
 .teacher-toolbar__icon {
-    width: 18px;
-    height: 18px;
-    fill: currentColor;
+    width: 22px;
+    height: 22px;
     pointer-events: none;
+    display: block;
+}
+
+.teacher-toolbar__label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--text-strong);
 }
 
 .teacher-toolbar__button--toggle.is-active {
@@ -2410,11 +2442,18 @@ body.student-shell * {
     box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
 }
 
+.teacher-toolbar__group {
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 24px;
+    background: color-mix(in srgb, var(--surface-soft) 55%, rgba(99, 102, 241, 0.08));
+    border-color: color-mix(in srgb, var(--border) 70%, transparent);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
 .student-toolbar__button,
 .teacher-toolbar__button {
     font: inherit;
-    font-weight: 500;
-    padding: 6px 14px;
     border-radius: 999px;
     border: 1px solid transparent;
     background: transparent;
@@ -2423,6 +2462,11 @@ body.student-shell * {
     transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
     display: inline-flex;
     align-items: center;
+}
+
+.student-toolbar__button {
+    font-weight: 500;
+    padding: 6px 14px;
     gap: 6px;
 }
 
@@ -2604,13 +2648,22 @@ body.student-shell * {
     color: var(--danger);
 }
 
-.student-toolbar__button--color,
-.teacher-toolbar__button--color {
+.student-toolbar__button--color {
     width: 36px;
     height: 36px;
     padding: 0;
     border-radius: 999px;
     border: 2px solid transparent;
+    background: transparent;
+    box-shadow: none;
+}
+
+.teacher-toolbar__button--color {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 999px;
+    border: 3px solid transparent;
     background: transparent;
     box-shadow: none;
 }
@@ -2624,6 +2677,11 @@ body.student-shell * {
     border-radius: inherit;
     background: var(--swatch-color, #111827);
     box-shadow: var(--shadow-color-btn);
+}
+
+.teacher-toolbar__button--color::before {
+    border: 3px solid rgba(255, 255, 255, 0.92);
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
 }
 
 .student-toolbar__button--color:hover:not(:disabled)::before,

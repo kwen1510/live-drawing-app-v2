@@ -82,8 +82,12 @@
                             <button id="clearImageBtn" class="ghost-btn" type="button" hidden>Clear selection</button>
                         </div>
                         <p class="mode-panel__filename" id="referenceFileName">No photo selected</p>
-                        <div class="mode-panel__preview mode-panel__preview--image" id="referencePreview" hidden>
-                            <img id="referencePreviewImage" alt="Selected reference preview">
+                        <div class="mode-panel__preview mode-panel__preview--image" id="referencePreview">
+                            <div class="image-preview__placeholder" id="referencePreviewPlaceholder">
+                                <strong>Waiting for a photo</strong>
+                                <span>Upload a reference image to share it with your class.</span>
+                            </div>
+                            <img id="referencePreviewImage" alt="Selected reference preview" hidden>
                         </div>
                     </div>
 
@@ -197,8 +201,10 @@
                     data-tooltip="Start annotating"
                 >
                     <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.33H5v-1.86l9.06-9.06 1.86 1.86-9 9.06zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"></path>
+                        <path fill="currentColor" d="M5.11 15.88 15.88 5.11a2.4 2.4 0 0 1 3.39 0l.62.62a2.4 2.4 0 0 1 0 3.39L9.12 19.89a2.4 2.4 0 0 1-1.12.63l-4.02 1.04a.75.75 0 0 1-.91-.91l1.03-4.02a2.4 2.4 0 0 1 .63-1.12z" />
+                        <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M14.8 6.7 18.1 10" />
                     </svg>
+                    <span class="teacher-toolbar__label">Annotate</span>
                 </button>
 
                 <div class="teacher-toolbar__divider" aria-hidden="true"></div>
@@ -225,6 +231,24 @@
                     <button
                         class="teacher-toolbar__button teacher-toolbar__button--color"
                         type="button"
+                        data-pen-colour="#2563eb"
+                        style="--swatch-color: #2563eb"
+                        aria-label="Use blue ink"
+                        aria-pressed="false"
+                        data-tooltip="Blue"
+                    ></button>
+                    <button
+                        class="teacher-toolbar__button teacher-toolbar__button--color"
+                        type="button"
+                        data-pen-colour="#0f766e"
+                        style="--swatch-color: #0f766e"
+                        aria-label="Use teal ink"
+                        aria-pressed="false"
+                        data-tooltip="Teal"
+                    ></button>
+                    <button
+                        class="teacher-toolbar__button teacher-toolbar__button--color"
+                        type="button"
                         data-pen-colour="#f97316"
                         style="--swatch-color: #f97316"
                         aria-label="Use orange ink"
@@ -243,8 +267,9 @@
                         data-tooltip="Pen"
                     >
                         <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M14.69 4.16l5.15 5.15a1 1 0 010 1.41l-8.3 8.3a1 1 0 01-.45.26l-5.11 1.28a1 1 0 01-1.21-1.21l1.28-5.11a1 1 0 01.26-.45l8.3-8.3a1 1 0 011.41 0zM6.46 17.54l-.68 2.71 2.71-.68 7.5-7.5-2.03-2.03-7.5 7.5zm10.21-8.8l1.18-1.18-2.03-2.03-1.18 1.18 2.03 2.03z"></path>
+                            <path fill="currentColor" d="M11.29 3.04 4.5 17.89 3.38 22l4.11-1.12L22 6.38 17.62 2 11.29 3.04zM5.92 19.46l.69-2.71 7.5-7.5 2.03 2.03-7.5 7.5-2.72.68z" />
                         </svg>
+                        <span class="teacher-toolbar__label">Pen</span>
                     </button>
                     <button
                         class="teacher-toolbar__button"
@@ -255,8 +280,11 @@
                         data-tooltip="Highlighter"
                     >
                         <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M3.5 17.5l3.8 3.8a1 1 0 001.42 0L12 18.99l3 3a1 1 0 001.58-.28l1.69-3.38a1 1 0 00-.19-1.12L8.79 8.23a1 1 0 00-1.53.13L3.22 15a1 1 0 00.09 1.28l.19.22zM7.57 9.64l7.5 7.5-2.33 2.33-7.5-7.5 2.33-2.33zM20.71 8.29l-1-1a1 1 0 00-1.42 1.42l1 1a1 1 0 001.42-1.42z"></path>
+                            <path fill="currentColor" d="M4 15.75 13.78 5.97a2.5 2.5 0 0 1 3.54 0l1.96 1.96a2.5 2.5 0 0 1 0 3.54L10.5 20.25H4v-4.5z" />
+                            <path fill="currentColor" d="M15.5 4.5 18 2l4 4-2.5 2.5-4-4z" />
+                            <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M5.5 18.75H18" />
                         </svg>
+                        <span class="teacher-toolbar__label">Highlighter</span>
                     </button>
                     <button
                         class="teacher-toolbar__button"
@@ -284,9 +312,10 @@
                         data-tooltip="Brush size"
                     >
                         <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M4 4h4l2 9 5-12h5l-5 14h-4l-2-9-5 12H3l5-14z"></path>
+                            <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 17h4m0 0 3.5-10 4 14 4-11h4" />
                         </svg>
                         <span class="brush-size-indicator" id="teacherBrushSizeIndicator" aria-hidden="true"></span>
+                        <span class="teacher-toolbar__label">Brush</span>
                     </button>
                     <div
                         id="teacherBrushSizePopover"
@@ -327,8 +356,10 @@
                         data-tooltip="Undo"
                     >
                         <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M12 5V2L6 8l6 6V9c3.31 0 6 2.24 6 5 0 1.32-.56 2.55-1.5 3.5l1.42 1.42A7 7 0 0019 14c0-3.87-3.13-7-7-7z"></path>
+                            <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 9 3 12l3 3" />
+                            <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 0 0-9-9 9.05 9.05 0 0 0-6.364 2.636L6 9" />
                         </svg>
+                        <span class="teacher-toolbar__label">Undo</span>
                     </button>
                     <button
                         id="teacherRedoButton"
@@ -339,8 +370,10 @@
                         data-tooltip="Redo"
                     >
                         <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M12 5a7 7 0 017 7c0 1.85-.75 3.53-1.96 4.74L15.59 15A5 5 0 0017 12c0-2.76-2.69-5-6-5v5l-6-6 6-6v3z"></path>
+                            <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="m18 15 3-3-3-3" />
+                            <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 0 1 9-9 9.05 9.05 0 0 1 6.364 2.636L18 9" />
                         </svg>
+                        <span class="teacher-toolbar__label">Redo</span>
                     </button>
                     <button
                         id="teacherClearButton"
@@ -351,8 +384,11 @@
                         data-tooltip="Clear annotations"
                     >
                         <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"></path>
+                            <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 7h14" />
+                            <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M10 3h4l1 2h5" />
+                            <rect x="6" y="7" width="12" height="13" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="1.6" />
                         </svg>
+                        <span class="teacher-toolbar__label">Clear</span>
                     </button>
                 </div>
 
@@ -368,8 +404,9 @@
                         data-tooltip="Stylus mode"
                     >
                         <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M21.67 6.33l-4-4a1.25 1.25 0 00-1.77 0L3.1 15.13a1 1 0 00-.27.53L2 20.88a1 1 0 001.2 1.2l5.22-.83a1 1 0 00.53-.27L21.67 8.1a1.25 1.25 0 000-1.77zm-9.28 9.28l-4-4 6.22-6.22 4 4-6.22 6.22zm-1.72 1.72l-2.12 2.12-3.35.53.53-3.35 2.12-2.12 2.82 2.82z"></path>
+                            <path fill="currentColor" d="M21.67 6.33 17.67 2.33a1.25 1.25 0 0 0-1.77 0L3.1 15.13a1 1 0 0 0-.27.53L2 20.88a1 1 0 0 0 1.2 1.2l5.22-.83a1 1 0 0 0 .53-.27L21.67 8.1a1.25 1.25 0 0 0 0-1.77zm-9.28 9.28-4-4 6.22-6.22 4 4-6.22 6.22zm-1.72 1.72-2.12 2.12-3.35.53.53-3.35 2.12-2.12 2.82 2.82z" />
                         </svg>
+                        <span class="teacher-toolbar__label">Stylus</span>
                     </button>
                 </div>
             </div>

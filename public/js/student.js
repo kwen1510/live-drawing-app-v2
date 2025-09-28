@@ -69,6 +69,10 @@ let supabase;
 let channel;
 let channelReady = false;
 
+const SEND_QUEUE_LIMIT = 256;
+const sendQueue = [];
+let sendInFlight = false;
+
 let storedPaths = [];
 let historyActions = [];
 let redoActions = [];
@@ -103,7 +107,8 @@ const drawingState = {
     buffer: [],
     history: [],
     rafId: null,
-    currentStroke: null
+    currentStroke: null,
+    teacherLastBroadcastIndex: 0
 };
 
 const eraserState = {
@@ -129,6 +134,14 @@ const canvasDisplayState = {
 
 let isQuestionActive = false;
 let isWaitingForTeacher = true;
+
+const TEACHER_BATCH_MAX_SEGMENTS = 120;
+const TEACHER_BATCH_FLUSH_DELAY = 40;
+
+const teacherStreamState = {
+    pendingSegments: [],
+    flushTimer: null
+};
 
 if (welcomeHeading) {
     welcomeHeading.textContent = username ? `Hi, ${username}!` : 'Student canvas';
@@ -751,11 +764,18 @@ async function initialiseRealtime() {
             announceStudent();
             broadcastCanvas('joined');
             requestSessionState();
+            drainSendQueue();
         } else if (status === 'CHANNEL_ERROR') {
+            channelReady = false;
+            clearSendQueue();
             setStatusBadge('Realtime connection error', 'error');
         } else if (status === 'TIMED_OUT') {
+            channelReady = false;
+            clearSendQueue();
             setStatusBadge('Supabase connection timed out', 'error');
         } else if (status === 'CLOSED') {
+            channelReady = false;
+            clearSendQueue();
             setStatusBadge('Realtime channel closed', 'error');
         }
     });
@@ -1026,6 +1046,8 @@ function handlePointerDown(event) {
     drawingState.buffer = [];
     drawingState.history = [];
     drawingState.currentStroke = getCurrentStrokeSettings();
+    drawingState.teacherLastBroadcastIndex = 0;
+    clearTeacherBatchQueue();
 
     const point = getCanvasPoint(event);
     addPointToStroke(point);
@@ -1146,6 +1168,7 @@ function addPointToStroke(rawPoint) {
     drawingState.buffer.push(point);
     drawingState.history.push(point);
     scheduleDraw();
+    queueTeacherRealtimeUpdate();
 }
 
 function eraseStrokeAtPoint(point) {
@@ -1393,6 +1416,9 @@ function finalizeStroke(cancelled) {
     drawingState.pointerId = null;
 
     if (cancelled || drawingState.history.length === 0) {
+        if (cancelled) {
+            clearTeacherBatchQueue();
+        }
         if (drawingState.rafId !== null) {
             cancelAnimationFrame(drawingState.rafId);
             drawingState.rafId = null;
@@ -1400,6 +1426,7 @@ function finalizeStroke(cancelled) {
         drawingState.buffer = [];
         drawingState.history = [];
         drawingState.currentStroke = null;
+        drawingState.teacherLastBroadcastIndex = 0;
         return;
     }
 
@@ -1430,12 +1457,21 @@ function finalizeStroke(cancelled) {
         historyActions.push({ type: 'draw', path: storedPath });
         redoActions = [];
         updateHistoryButtons();
+
+        if (normalisedPoints.length === 1) {
+            enqueueTeacherSegments([
+                createTeacherDotSegment(normalisedPoints[0], stroke)
+            ]);
+        }
         broadcastCanvas('update');
     }
+
+    flushTeacherBatch(true);
 
     drawingState.buffer = [];
     drawingState.history = [];
     drawingState.currentStroke = null;
+    drawingState.teacherLastBroadcastIndex = 0;
 }
 
 function scheduleDraw() {
@@ -1506,6 +1542,8 @@ function clearCanvas({ broadcast = false } = {}) {
         drawingState.rafId = null;
     }
     drawingState.currentStroke = null;
+    drawingState.teacherLastBroadcastIndex = 0;
+    clearTeacherBatchQueue();
     redrawCanvas();
     updateHistoryButtons();
 
@@ -2500,6 +2538,187 @@ function trackReliableSequence(payload = {}) {
     return true;
 }
 
+function queueTeacherRealtimeUpdate() {
+    if (!channelReady || !channel) {
+        return;
+    }
+
+    if (!drawingState.currentStroke) {
+        return;
+    }
+
+    const history = drawingState.history;
+    if (!history || history.length <= 1) {
+        return;
+    }
+
+    const stroke = drawingState.currentStroke;
+    const startIndex = Math.max(1, (drawingState.teacherLastBroadcastIndex ?? 0) + 1);
+    const segments = [];
+
+    for (let i = startIndex; i < history.length; i += 1) {
+        const previous = history[i - 1];
+        const current = history[i];
+        const normalisedStart = normaliseDisplayPoint(previous);
+        const normalisedEnd = normaliseDisplayPoint(current);
+
+        if (!normalisedStart || !normalisedEnd) {
+            continue;
+        }
+
+        const segment = createTeacherLineSegment(normalisedStart, normalisedEnd, stroke);
+        if (segment) {
+            segments.push(segment);
+        }
+    }
+
+    if (segments.length === 0) {
+        return;
+    }
+
+    drawingState.teacherLastBroadcastIndex = history.length - 1;
+    enqueueTeacherSegments(segments);
+}
+
+function enqueueTeacherSegments(segments) {
+    if (!Array.isArray(segments) || segments.length === 0) {
+        return;
+    }
+
+    segments.forEach((segment) => {
+        if (segment) {
+            teacherStreamState.pendingSegments.push(segment);
+        }
+    });
+
+    if (teacherStreamState.pendingSegments.length === 0) {
+        return;
+    }
+
+    if (teacherStreamState.pendingSegments.length >= TEACHER_BATCH_MAX_SEGMENTS) {
+        flushTeacherBatch(false);
+        return;
+    }
+
+    scheduleTeacherBatchFlush();
+}
+
+function scheduleTeacherBatchFlush() {
+    if (teacherStreamState.flushTimer !== null) {
+        return;
+    }
+
+    teacherStreamState.flushTimer = window.setTimeout(() => {
+        teacherStreamState.flushTimer = null;
+        flushTeacherBatch(false);
+    }, TEACHER_BATCH_FLUSH_DELAY);
+}
+
+function flushTeacherBatch(force) {
+    if (teacherStreamState.flushTimer !== null) {
+        clearTimeout(teacherStreamState.flushTimer);
+        teacherStreamState.flushTimer = null;
+    }
+
+    if (!channelReady || !channel) {
+        return;
+    }
+
+    if (!Array.isArray(teacherStreamState.pendingSegments) || teacherStreamState.pendingSegments.length === 0) {
+        return;
+    }
+
+    const limit = force ? teacherStreamState.pendingSegments.length : TEACHER_BATCH_MAX_SEGMENTS;
+    const batch = teacherStreamState.pendingSegments.splice(0, limit).filter(Boolean);
+
+    if (batch.length === 0) {
+        return;
+    }
+
+    safeSend('draw_batch', {
+        username,
+        batch
+    });
+
+    if (!force && teacherStreamState.pendingSegments.length > 0) {
+        scheduleTeacherBatchFlush();
+    }
+}
+
+function clearTeacherBatchQueue() {
+    if (teacherStreamState.flushTimer !== null) {
+        clearTimeout(teacherStreamState.flushTimer);
+        teacherStreamState.flushTimer = null;
+    }
+
+    teacherStreamState.pendingSegments.length = 0;
+}
+
+function createTeacherLineSegment(normalisedStart, normalisedEnd, stroke) {
+    if (!Array.isArray(normalisedStart) || !Array.isArray(normalisedEnd)) {
+        return null;
+    }
+
+    const [startX, startY] = normalisedStart;
+    const [endX, endY] = normalisedEnd;
+
+    if (!Number.isFinite(startX) || !Number.isFinite(startY) || !Number.isFinite(endX) || !Number.isFinite(endY)) {
+        return null;
+    }
+
+    const width = typeof stroke?.width === 'number' && Number.isFinite(stroke.width)
+        ? clampBrushSize(stroke.width)
+        : DEFAULT_BRUSH_SIZE;
+    const composite = stroke?.erase ? 'destination-out' : 'source-over';
+    const color = stroke?.erase
+        ? '#000000'
+        : (typeof stroke?.color === 'string' && stroke.color.trim().length > 0
+            ? stroke.color
+            : DEFAULT_STROKE_COLOR);
+
+    return {
+        type: 'line',
+        startX,
+        startY,
+        endX,
+        endY,
+        width,
+        color,
+        composite
+    };
+}
+
+function createTeacherDotSegment(normalisedPoint, stroke) {
+    if (!Array.isArray(normalisedPoint)) {
+        return null;
+    }
+
+    const [x, y] = normalisedPoint;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return null;
+    }
+
+    const width = typeof stroke?.width === 'number' && Number.isFinite(stroke.width)
+        ? clampBrushSize(stroke.width)
+        : DEFAULT_BRUSH_SIZE;
+    const composite = stroke?.erase ? 'destination-out' : 'source-over';
+    const color = stroke?.erase
+        ? '#000000'
+        : (typeof stroke?.color === 'string' && stroke.color.trim().length > 0
+            ? stroke.color
+            : DEFAULT_STROKE_COLOR);
+    const radius = clamp(width * 0.5, width * 0.45, width * 0.8);
+
+    return {
+        type: 'dot',
+        x,
+        y,
+        radius,
+        color,
+        composite
+    };
+}
+
 function broadcastCanvas(reason = 'update') {
     if (!channelReady) {
         return;
@@ -2522,14 +2741,66 @@ function broadcastCanvas(reason = 'update') {
     }
 }
 
+function clonePayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+        return payload;
+    }
+
+    if (typeof structuredClone === 'function') {
+        return structuredClone(payload);
+    }
+
+    try {
+        return JSON.parse(JSON.stringify(payload));
+    } catch (_error) {
+        return payload;
+    }
+}
+
 function safeSend(event, payload = {}) {
-    if (!channelReady || !channel) {
+    if (!channelReady || !channel || typeof event !== 'string' || event.length === 0) {
         return;
     }
 
-    channel.send({ type: 'broadcast', event, payload }).catch((error) => {
-        console.error(`Supabase event "${event}" failed`, error);
+    const clonedPayload = clonePayload(payload);
+
+    if (sendQueue.length >= SEND_QUEUE_LIMIT) {
+        sendQueue.shift();
+    }
+
+    sendQueue.push({ event, payload: clonedPayload });
+    drainSendQueue();
+}
+
+function drainSendQueue() {
+    if (!channelReady || !channel) {
+        sendInFlight = false;
+        return;
+    }
+
+    if (sendInFlight || sendQueue.length === 0) {
+        return;
+    }
+
+    const next = sendQueue.shift();
+    if (!next) {
+        return;
+    }
+
+    sendInFlight = true;
+    channel.send({ type: 'broadcast', event: next.event, payload: next.payload }).catch((error) => {
+        console.error(`Supabase event "${next.event}" failed`, error);
+    }).finally(() => {
+        sendInFlight = false;
+        if (sendQueue.length > 0) {
+            drainSendQueue();
+        }
     });
+}
+
+function clearSendQueue() {
+    sendQueue.length = 0;
+    sendInFlight = false;
 }
 
 function readNumericLocal(key, fallback = DEFAULT_BRUSH_SIZE) {
