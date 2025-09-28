@@ -699,11 +699,25 @@ input[type="range"]::-moz-range-thumb {
     max-width: 110px;
     aspect-ratio: 1 / 1;
     border-radius: 18px;
-    background-color: #f8fafc;
-    background-size: cover;
-    background-position: center;
+    background: linear-gradient(155deg, rgba(226, 232, 240, 0.5), rgba(248, 250, 252, 0.95));
     border: 1px solid rgba(148, 163, 184, 0.35);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+}
+
+.mode-panel__preset-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.mode-panel__preset-placeholder {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    padding: 0.4rem 0.6rem;
+    text-align: center;
 }
 
 .mode-panel__preset-meta {
@@ -848,6 +862,10 @@ input[type="range"]::-moz-range-thumb {
     gap: 1rem;
 }
 
+.student-card--reviewed {
+    box-shadow: 0 24px 48px rgba(16, 185, 129, 0.18);
+}
+
 .student-card__header {
     display: flex;
     align-items: flex-start;
@@ -863,6 +881,41 @@ input[type="range"]::-moz-range-thumb {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+
+.student-card__info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+}
+
+.student-card__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #047857;
+    background: rgba(22, 163, 74, 0.16);
+    box-shadow: 0 6px 18px rgba(16, 185, 129, 0.16);
+    line-height: 1;
+}
+
+.student-card__badge::before {
+    content: '\2713';
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 50%;
+    background: currentColor;
+    color: #ffffff;
+    font-size: 0.6rem;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.65);
 }
 
 .student-card__status-dot {
@@ -1050,14 +1103,31 @@ input[type="range"]::-moz-range-thumb {
 .teacher-toolbar {
     width: 100%;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
-    gap: 14px;
-    padding: 16px 24px;
-    border-radius: 28px;
-    background: color-mix(in srgb, var(--surface) 90%, rgba(99, 102, 241, 0.08));
-    border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
-    box-shadow: 0 22px 48px rgba(15, 23, 42, 0.16);
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 24px;
+    background: color-mix(in srgb, var(--surface) 92%, rgba(99, 102, 241, 0.06));
+    border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.14);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.teacher-toolbar::-webkit-scrollbar {
+    height: 6px;
+}
+
+.teacher-toolbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.teacher-toolbar::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.35);
+    border-radius: 999px;
 }
 
 .teacher-toolbar.is-disabled {
@@ -1072,19 +1142,20 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .teacher-toolbar__button {
-    min-width: 44px;
-    height: 44px;
-    padding: 10px 18px;
+    min-width: 40px;
+    height: 40px;
+    padding: 8px 14px;
     justify-content: center;
     gap: 8px;
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 600;
+    line-height: 1;
 }
 
 .teacher-toolbar__button.teacher-toolbar__button--toggle,
 .teacher-toolbar__button.teacher-toolbar__button--popover {
     width: auto;
-    padding: 10px 20px;
+    padding: 8px 14px;
 }
 
 .teacher-toolbar__button.teacher-toolbar__button--popover[aria-expanded="true"] {
@@ -1094,10 +1165,23 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .teacher-toolbar__button.teacher-toolbar__button--color {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
     padding: 0;
     border-width: 3px;
+}
+
+.teacher-toolbar__button--icon {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.teacher-toolbar__button--icon .teacher-toolbar__icon {
+    width: 20px;
+    height: 20px;
 }
 
 .teacher-toolbar__button.is-muted {
@@ -1121,6 +1205,7 @@ input[type="range"]::-moz-range-thumb {
     font-weight: 600;
     letter-spacing: 0.01em;
     color: var(--text-strong);
+    white-space: nowrap;
 }
 
 .teacher-toolbar__button--toggle.is-active {
@@ -2333,6 +2418,29 @@ body.student-shell * {
     background: #ef4444;
 }
 
+.student-topbar__review {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 1rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #047857;
+    background: rgba(22, 163, 74, 0.16);
+    box-shadow: 0 10px 22px rgba(16, 185, 129, 0.18);
+    white-space: nowrap;
+}
+
+.student-topbar__review-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+
 .status-indicator--pending {
     background: #f59e0b;
 }
@@ -2444,11 +2552,15 @@ body.student-shell * {
 
 .teacher-toolbar__group {
     gap: 10px;
-    padding: 8px 12px;
-    border-radius: 24px;
-    background: color-mix(in srgb, var(--surface-soft) 55%, rgba(99, 102, 241, 0.08));
-    border-color: color-mix(in srgb, var(--border) 70%, transparent);
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.teacher-toolbar__group + .teacher-toolbar__group {
+    margin-left: 4px;
 }
 
 .student-toolbar__button,
@@ -2496,10 +2608,6 @@ body.student-shell * {
 .brush-size-indicator.is-eraser {
     background: #ffffff;
     box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.35);
-}
-
-.brush-size-indicator.is-highlighter {
-    box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.45);
 }
 
 .brush-size-popover {
@@ -2659,13 +2767,14 @@ body.student-shell * {
 }
 
 .teacher-toolbar__button--color {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
     padding: 0;
     border-radius: 999px;
-    border: 3px solid transparent;
+    border: 2px solid transparent;
     background: transparent;
     box-shadow: none;
+    flex: 0 0 auto;
 }
 
 .student-toolbar__button--color::before,
@@ -2677,11 +2786,12 @@ body.student-shell * {
     border-radius: inherit;
     background: var(--swatch-color, #111827);
     box-shadow: var(--shadow-color-btn);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .teacher-toolbar__button--color::before {
-    border: 3px solid rgba(255, 255, 255, 0.92);
-    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+    border: 2px solid rgba(255, 255, 255, 0.92);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
 }
 
 .student-toolbar__button--color:hover:not(:disabled)::before,
@@ -2689,6 +2799,7 @@ body.student-shell * {
 .teacher-toolbar__button--color:hover:not(:disabled)::before,
 .teacher-toolbar__button--color.is-active::before {
     box-shadow: 0 12px 30px rgba(99, 102, 241, 0.35);
+    transform: translateY(-1px);
 }
 
 .student-toolbar__button--color.is-active,
@@ -2715,6 +2826,12 @@ body.student-shell * {
     .student-topbar__right {
         width: 100%;
         justify-content: space-between;
+        flex-wrap: wrap;
+    }
+
+    .student-topbar__review {
+        margin-left: 0;
+        margin-top: 0.35rem;
     }
 
     .student-toolbar__group {

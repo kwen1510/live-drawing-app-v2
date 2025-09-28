@@ -65,29 +65,37 @@ const PRESET_BACKGROUNDS = Object.freeze({
         label: 'Cross grid',
         description: 'Centered axes with arrows pointing up and right.',
         imageData: createSvgDataUrl(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+            <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
                 <defs>
-                    <marker id="arrow-head" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
-                        <path d="M0,1 L12,7 L0,13 Z" fill="#4b5563"/>
+                    <marker id="arrow-head-cross" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,1 L9,6 L0,11 Z" fill="#1f2937"/>
                     </marker>
                 </defs>
-                <rect x="64" y="64" width="896" height="896" fill="#ffffff" stroke="#d1d5db" stroke-width="6"/>
+                <rect width="800" height="600" fill="#f8fafc"/>
+                <rect x="40" y="40" width="720" height="520" rx="18" ry="18" fill="#ffffff" stroke="#cbd5f5" stroke-width="4"/>
                 <g stroke="#e2e8f0" stroke-width="2">
-                    <path d="M64 192 H960"/>
-                    <path d="M64 320 H960"/>
-                    <path d="M64 448 H960"/>
-                    <path d="M64 576 H960"/>
-                    <path d="M64 704 H960"/>
-                    <path d="M64 832 H960"/>
-                    <path d="M192 64 V960"/>
-                    <path d="M320 64 V960"/>
-                    <path d="M448 64 V960"/>
-                    <path d="M576 64 V960"/>
-                    <path d="M704 64 V960"/>
-                    <path d="M832 64 V960"/>
+                    <path d="M40 100 H760"/>
+                    <path d="M40 160 H760"/>
+                    <path d="M40 220 H760"/>
+                    <path d="M40 280 H760"/>
+                    <path d="M40 340 H760"/>
+                    <path d="M40 400 H760"/>
+                    <path d="M40 460 H760"/>
+                    <path d="M40 520 H760"/>
+                    <path d="M100 40 V560"/>
+                    <path d="M160 40 V560"/>
+                    <path d="M220 40 V560"/>
+                    <path d="M280 40 V560"/>
+                    <path d="M340 40 V560"/>
+                    <path d="M400 40 V560"/>
+                    <path d="M460 40 V560"/>
+                    <path d="M520 40 V560"/>
+                    <path d="M580 40 V560"/>
+                    <path d="M640 40 V560"/>
+                    <path d="M700 40 V560"/>
                 </g>
-                <line x1="80" y1="512" x2="944" y2="512" stroke="#4b5563" stroke-width="8" marker-end="url(#arrow-head)"/>
-                <line x1="512" y1="944" x2="512" y2="80" stroke="#4b5563" stroke-width="8" marker-end="url(#arrow-head)"/>
+                <line x1="40" y1="300" x2="760" y2="300" stroke="#1f2937" stroke-width="6" stroke-linecap="round" marker-end="url(#arrow-head-cross)"/>
+                <line x1="400" y1="560" x2="400" y2="40" stroke="#1f2937" stroke-width="6" stroke-linecap="round" marker-end="url(#arrow-head-cross)"/>
             </svg>
         `),
         previewAlt: 'Graph grid with centered axes preview',
@@ -98,29 +106,37 @@ const PRESET_BACKGROUNDS = Object.freeze({
         label: 'Corner grid',
         description: 'Axes start in the bottom-left corner with arrows on the positives.',
         imageData: createSvgDataUrl(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+            <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
                 <defs>
-                    <marker id="arrow-head-corner" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
-                        <path d="M0,1 L12,7 L0,13 Z" fill="#334155"/>
+                    <marker id="arrow-head-corner" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,1 L9,6 L0,11 Z" fill="#1f2937"/>
                     </marker>
                 </defs>
-                <rect x="64" y="64" width="896" height="896" fill="#ffffff" stroke="#d1d5db" stroke-width="6"/>
+                <rect width="800" height="600" fill="#f8fafc"/>
+                <rect x="40" y="40" width="720" height="520" rx="18" ry="18" fill="#ffffff" stroke="#cbd5f5" stroke-width="4"/>
                 <g stroke="#e2e8f0" stroke-width="2">
-                    <path d="M64 832 H960"/>
-                    <path d="M64 704 H960"/>
-                    <path d="M64 576 H960"/>
-                    <path d="M64 448 H960"/>
-                    <path d="M64 320 H960"/>
-                    <path d="M64 192 H960"/>
-                    <path d="M192 64 V960"/>
-                    <path d="M320 64 V960"/>
-                    <path d="M448 64 V960"/>
-                    <path d="M576 64 V960"/>
-                    <path d="M704 64 V960"/>
-                    <path d="M832 64 V960"/>
+                    <path d="M40 100 H760"/>
+                    <path d="M40 160 H760"/>
+                    <path d="M40 220 H760"/>
+                    <path d="M40 280 H760"/>
+                    <path d="M40 340 H760"/>
+                    <path d="M40 400 H760"/>
+                    <path d="M40 460 H760"/>
+                    <path d="M40 520 H760"/>
+                    <path d="M100 40 V560"/>
+                    <path d="M160 40 V560"/>
+                    <path d="M220 40 V560"/>
+                    <path d="M280 40 V560"/>
+                    <path d="M340 40 V560"/>
+                    <path d="M400 40 V560"/>
+                    <path d="M460 40 V560"/>
+                    <path d="M520 40 V560"/>
+                    <path d="M580 40 V560"/>
+                    <path d="M640 40 V560"/>
+                    <path d="M700 40 V560"/>
                 </g>
-                <line x1="96" y1="896" x2="96" y2="112" stroke="#334155" stroke-width="10" marker-end="url(#arrow-head-corner)"/>
-                <line x1="96" y1="896" x2="912" y2="896" stroke="#334155" stroke-width="10" marker-end="url(#arrow-head-corner)"/>
+                <line x1="40" y1="560" x2="760" y2="560" stroke="#1f2937" stroke-width="6" stroke-linecap="round" marker-end="url(#arrow-head-corner)"/>
+                <line x1="40" y1="560" x2="40" y2="40" stroke="#1f2937" stroke-width="6" stroke-linecap="round" marker-end="url(#arrow-head-corner)"/>
             </svg>
         `),
         previewAlt: 'Corner graph grid preview',
@@ -155,19 +171,15 @@ let teacherPenStudent = null;
 let teacherPenDrawing = false;
 let teacherPenCurrentPath = null;
 let teacherPenColour = '#ef4444';
+let teacherEraserAction = null;
 const TEACHER_TOOL_TYPES = Object.freeze({
     PEN: 'pen',
-    ERASER: 'eraser',
-    HIGHLIGHTER: 'highlighter'
+    ERASER: 'eraser'
 });
 const TEACHER_DEFAULT_BRUSH_SIZE = 6;
 const TEACHER_MIN_BRUSH_SIZE = 1;
 const TEACHER_MAX_BRUSH_SIZE = 12;
-const TEACHER_HIGHLIGHTER_MULTIPLIER = 2.2;
-const TEACHER_HIGHLIGHTER_OPACITY = 0.45;
-const TEACHER_HIGHLIGHTER_COMPOSITE = 'multiply';
-const TEACHER_HIGHLIGHTER_COLOUR = '#facc15';
-const TEACHER_MAX_STROKE_WIDTH = TEACHER_MAX_BRUSH_SIZE * TEACHER_HIGHLIGHTER_MULTIPLIER;
+const TEACHER_MAX_STROKE_WIDTH = TEACHER_MAX_BRUSH_SIZE;
 const TEACHER_BRUSH_STORAGE_KEY = 'teacher-brush-size';
 const TEACHER_STYLUS_STORAGE_KEY = 'teacher-stylus-only';
 const TEACHER_ERASER_HITBOX_PADDING = 6;
@@ -214,7 +226,54 @@ function ensureTeacherPenCollections(student) {
         student.teacherRedoStack = [];
     }
 
+    if (typeof student.teacherHasReviewed !== 'boolean') {
+        student.teacherHasReviewed = false;
+    }
+
     return student;
+}
+
+function updateStudentReviewUi(student) {
+    if (!student) {
+        return;
+    }
+
+    const reviewed = Boolean(student.teacherHasReviewed);
+    if (student.reviewBadge) {
+        student.reviewBadge.hidden = !reviewed;
+    }
+
+    if (student.container) {
+        student.container.classList.toggle('student-card--reviewed', reviewed);
+    }
+
+    if (teacherPenStudent === student) {
+        updateStudentModalMeta(student);
+    }
+}
+
+function markStudentReviewed(student) {
+    const target = ensureTeacherPenCollections(student);
+    if (!target) {
+        return;
+    }
+
+    if (!target.teacherHasReviewed) {
+        target.teacherHasReviewed = true;
+    }
+
+    updateStudentReviewUi(target);
+}
+
+function clearStudentReview(student) {
+    if (!student) {
+        return;
+    }
+
+    if (student.teacherHasReviewed) {
+        student.teacherHasReviewed = false;
+    }
+    updateStudentReviewUi(student);
 }
 
 function recordTeacherHistory(student, action, options = {}) {
@@ -231,6 +290,43 @@ function recordTeacherHistory(student, action, options = {}) {
             ? cloneTeacherAnnotations(action.paths)
             : cloneTeacherAnnotations(target.teacherAnnotations);
         entry = { type: 'clear', paths };
+    } else if (action.type === 'erase') {
+        if (Array.isArray(action.entries)) {
+            const entries = action.entries
+                .map((item) => {
+                    if (!item || !item.path) {
+                        return null;
+                    }
+
+                    const index = typeof item.index === 'number' && Number.isFinite(item.index)
+                        ? Math.floor(item.index)
+                        : null;
+
+                    return {
+                        path: item.path,
+                        index
+                    };
+                })
+                .filter(Boolean);
+
+            if (entries.length === 0) {
+                return null;
+            }
+
+            entry = { type: 'erase', entries };
+        } else if (action.path) {
+            const index = typeof action.index === 'number' && Number.isFinite(action.index)
+                ? Math.floor(action.index)
+                : null;
+
+            entry = {
+                type: 'erase',
+                path: action.path,
+                index
+            };
+        } else {
+            return null;
+        }
     }
 
     target.teacherHistory.push(entry);
@@ -240,6 +336,99 @@ function recordTeacherHistory(student, action, options = {}) {
     }
 
     return entry;
+}
+
+function appendTeacherEraserRemoval(student, removal) {
+    if (!removal || !removal.path) {
+        return;
+    }
+
+    const target = ensureTeacherPenCollections(student);
+    if (!target) {
+        return;
+    }
+
+    if (!teacherEraserAction || teacherEraserAction.student !== target) {
+        teacherEraserAction = {
+            student: target,
+            entries: []
+        };
+    }
+
+    const index = typeof removal.index === 'number' && Number.isFinite(removal.index)
+        ? Math.max(0, Math.floor(removal.index))
+        : target.teacherAnnotations.length;
+
+    teacherEraserAction.entries.push({
+        path: removal.path,
+        index
+    });
+}
+
+function completeTeacherEraserAction(options = {}) {
+    const { cancel = false } = options;
+    const action = teacherEraserAction;
+    teacherEraserAction = null;
+
+    if (!action || cancel) {
+        return null;
+    }
+
+    const target = ensureTeacherPenCollections(action.student);
+    if (!target) {
+        return null;
+    }
+
+    const entries = Array.isArray(action.entries)
+        ? action.entries.filter((entry) => entry && entry.path)
+        : [];
+
+    if (entries.length === 0) {
+        return null;
+    }
+
+    return recordTeacherHistory(target, {
+        type: 'erase',
+        entries: entries.map((entry) => ({
+            path: entry.path,
+            index: entry.index
+        }))
+    });
+}
+
+function normaliseTeacherEraseEntries(action) {
+    if (!action) {
+        return [];
+    }
+
+    if (Array.isArray(action.entries)) {
+        return action.entries
+            .map((entry) => {
+                if (!entry || !entry.path) {
+                    return null;
+                }
+
+                const index = typeof entry.index === 'number' && Number.isFinite(entry.index)
+                    ? Math.floor(entry.index)
+                    : null;
+
+                return {
+                    path: entry.path,
+                    index
+                };
+            })
+            .filter(Boolean);
+    }
+
+    if (action.path) {
+        const index = typeof action.index === 'number' && Number.isFinite(action.index)
+            ? Math.floor(action.index)
+            : null;
+
+        return [{ path: action.path, index }];
+    }
+
+    return [];
 }
 
 function hydrateTeacherHistoryFromAnnotations(student) {
@@ -295,6 +484,21 @@ function clampAnnotationIndex(index, length) {
     }
 
     const maxIndex = Math.max(0, Math.floor(length) - 1);
+
+    if (!Number.isFinite(index)) {
+        return maxIndex;
+    }
+
+    const numericIndex = Math.floor(index);
+    return Math.max(0, Math.min(numericIndex, maxIndex));
+}
+
+function clampTeacherInsertionIndex(index, length) {
+    if (!Number.isFinite(length)) {
+        return 0;
+    }
+
+    const maxIndex = Math.max(0, Math.floor(length));
 
     if (!Number.isFinite(index)) {
         return maxIndex;
@@ -762,6 +966,16 @@ function ensureStudentCard(username) {
     identity.appendChild(nameEl);
     identity.appendChild(statusDot);
 
+    const reviewBadge = document.createElement('span');
+    reviewBadge.className = 'student-card__badge';
+    reviewBadge.textContent = 'Reviewed';
+    reviewBadge.hidden = true;
+
+    const identityWrap = document.createElement('div');
+    identityWrap.className = 'student-card__info';
+    identityWrap.appendChild(identity);
+    identityWrap.appendChild(reviewBadge);
+
     const expandBtn = document.createElement('button');
     expandBtn.type = 'button';
     expandBtn.className = 'student-card__expand';
@@ -772,7 +986,7 @@ function ensureStudentCard(username) {
     updatedAt.className = 'student-card__meta';
     updatedAt.textContent = 'Awaiting activity';
 
-    header.appendChild(identity);
+    header.appendChild(identityWrap);
     header.appendChild(expandBtn);
 
     const canvasWrapper = document.createElement('div');
@@ -810,10 +1024,13 @@ function ensureStudentCard(username) {
         previewCtx: null,
         teacherAnnotations: [],
         teacherHistory: [],
-        teacherRedoStack: []
+        teacherRedoStack: [],
+        teacherHasReviewed: false,
+        reviewBadge
     };
 
     students.set(username, student);
+    updateStudentReviewUi(student);
     return student;
 }
 
@@ -838,6 +1055,8 @@ function insertStudentCardSorted(cardElement, username) {
 function updateStudentCanvas(username, canvasState) {
     const student = students.get(username);
     if (!student || !canvasState) return;
+
+    clearStudentReview(student);
 
     student.paths = Array.isArray(canvasState.paths) ? canvasState.paths : [];
     student.backgroundVectors = normaliseBackgroundVectorDefinition(canvasState.backgroundVectors);
@@ -1155,9 +1374,14 @@ function setTeacherPenActive(active) {
     const hasStudent = Boolean(teacherPenStudent);
     teacherPenActive = Boolean(active) && hasStudent;
 
+    if (teacherPenActive && teacherActiveTool !== TEACHER_TOOL_TYPES.PEN) {
+        setTeacherTool(TEACHER_TOOL_TYPES.PEN);
+    }
+
     if (!teacherPenActive) {
         teacherPenDrawing = false;
         teacherPenCurrentPath = null;
+        completeTeacherEraserAction({ cancel: true });
         closeTeacherBrushPopover();
     }
 
@@ -1175,6 +1399,10 @@ function setTeacherPenColour(colour) {
     }
 
     teacherPenColour = colour;
+
+    if (teacherActiveTool !== TEACHER_TOOL_TYPES.PEN) {
+        setTeacherTool(TEACHER_TOOL_TYPES.PEN);
+    }
 
     teacherPenSwatches.forEach((swatch) => {
         if (!swatch) {
@@ -1375,7 +1603,6 @@ function updateTeacherPenUi() {
         swatch.classList.toggle('is-active', isActive);
         swatch.setAttribute('aria-pressed', String(isActive));
         swatch.disabled = !hasStudent;
-        swatch.classList.toggle('is-muted', hasStudent && !toggleActive);
     });
 
     teacherToolButtons.forEach((button) => {
@@ -1386,12 +1613,10 @@ function updateTeacherPenUi() {
         button.classList.toggle('is-active', isActive);
         button.setAttribute('aria-pressed', String(isActive));
         button.disabled = !hasStudent;
-        button.classList.toggle('is-muted', hasStudent && !toggleActive);
     });
 
     if (teacherBrushButton) {
         teacherBrushButton.disabled = !hasStudent;
-        teacherBrushButton.classList.toggle('is-muted', hasStudent && !toggleActive);
         teacherBrushButton.setAttribute('aria-expanded', teacherBrushPopoverOpen ? 'true' : 'false');
     }
 
@@ -1470,7 +1695,6 @@ function updateTeacherBrushUi({ updateSlider = true } = {}) {
         teacherBrushIndicator.style.background = previewColour;
         teacherBrushIndicator.style.opacity = String(previewOpacity);
         teacherBrushIndicator.classList.toggle('is-eraser', teacherActiveTool === TEACHER_TOOL_TYPES.ERASER);
-        teacherBrushIndicator.classList.toggle('is-highlighter', teacherActiveTool === TEACHER_TOOL_TYPES.HIGHLIGHTER);
     }
 
     if (teacherBrushButton) {
@@ -1553,10 +1777,26 @@ function undoTeacherAnnotation() {
             changed = true;
         }
     } else if (action.type === 'erase') {
-        const index = clampAnnotationIndex(action.index, student.teacherAnnotations.length + 1);
-        student.teacherAnnotations.splice(index, 0, action.path);
-        student.teacherRedoStack.push({ type: 'erase', path: action.path, index });
-        changed = true;
+        const entries = normaliseTeacherEraseEntries(action);
+        if (entries.length > 0) {
+            const redoEntries = [];
+            for (let i = entries.length - 1; i >= 0; i -= 1) {
+                const entry = entries[i];
+                const insertIndex = clampTeacherInsertionIndex(
+                    typeof entry.index === 'number' ? entry.index : student.teacherAnnotations.length,
+                    student.teacherAnnotations.length
+                );
+                student.teacherAnnotations.splice(insertIndex, 0, entry.path);
+                redoEntries.push({ path: entry.path, index: insertIndex });
+            }
+
+            if (redoEntries.length > 0) {
+                redoEntries.reverse();
+                student.teacherRedoStack.push({ type: 'erase', entries: redoEntries });
+            }
+
+            changed = true;
+        }
     } else if (action.type === 'clear') {
         const restored = cloneTeacherAnnotations(action.paths);
         student.teacherAnnotations = restored;
@@ -1598,14 +1838,31 @@ function redoTeacherAnnotation() {
         recordTeacherHistory(student, { type: 'draw', path: action.path, index }, { clearRedo: false });
         changed = true;
     } else if (action.type === 'erase') {
-        let index = findTeacherAnnotationIndex(student.teacherAnnotations, action.path, action.index);
-        if (index === -1 && student.teacherAnnotations.length > 0) {
-            index = Math.min(student.teacherAnnotations.length - 1, clampAnnotationIndex(action.index, student.teacherAnnotations.length));
-        }
-        if (index !== -1 && student.teacherAnnotations.length > 0) {
-            const [removed] = student.teacherAnnotations.splice(index, 1);
-            recordTeacherHistory(student, { type: 'erase', path: removed, index }, { clearRedo: false });
-            changed = true;
+        const entries = normaliseTeacherEraseEntries(action);
+        if (entries.length > 0) {
+            const performed = [];
+            entries.forEach((entry) => {
+                if (!entry.path) {
+                    return;
+                }
+
+                let removalIndex = findTeacherAnnotationIndex(student.teacherAnnotations, entry.path, entry.index);
+                if (removalIndex === -1 && typeof entry.index === 'number') {
+                    removalIndex = clampAnnotationIndex(entry.index, student.teacherAnnotations.length);
+                }
+
+                if (removalIndex !== -1 && removalIndex < student.teacherAnnotations.length) {
+                    const [removed] = student.teacherAnnotations.splice(removalIndex, 1);
+                    if (removed) {
+                        performed.push({ path: removed, index: removalIndex });
+                    }
+                }
+            });
+
+            if (performed.length > 0) {
+                recordTeacherHistory(student, { type: 'erase', entries: performed }, { clearRedo: false });
+                changed = true;
+            }
         }
     } else if (action.type === 'clear') {
         const snapshot = cloneTeacherAnnotations(student.teacherAnnotations);
@@ -1627,22 +1884,13 @@ function redoTeacherAnnotation() {
 function createTeacherStroke() {
     const baseSize = clampTeacherBrushSize(teacherBrushSize);
     const isEraser = teacherActiveTool === TEACHER_TOOL_TYPES.ERASER;
-    const isHighlighter = teacherActiveTool === TEACHER_TOOL_TYPES.HIGHLIGHTER;
-
-    const width = isHighlighter
-        ? clampNumber(baseSize * TEACHER_HIGHLIGHTER_MULTIPLIER, TEACHER_MIN_BRUSH_SIZE, TEACHER_MAX_STROKE_WIDTH)
-        : baseSize;
 
     return {
-        color: isEraser
-            ? '#000000'
-            : (isHighlighter ? TEACHER_HIGHLIGHTER_COLOUR : teacherPenColour),
-        width,
+        color: isEraser ? '#000000' : teacherPenColour,
+        width: baseSize,
         erase: isEraser,
-        opacity: isHighlighter ? TEACHER_HIGHLIGHTER_OPACITY : 1,
-        composite: isEraser
-            ? 'destination-out'
-            : (isHighlighter ? TEACHER_HIGHLIGHTER_COMPOSITE : 'source-over'),
+        opacity: 1,
+        composite: isEraser ? 'destination-out' : 'source-over',
         tool: teacherActiveTool,
         points: []
     };
@@ -1661,16 +1909,10 @@ function getTeacherBrushPreviewColour() {
     if (teacherActiveTool === TEACHER_TOOL_TYPES.ERASER) {
         return '#ffffff';
     }
-    if (teacherActiveTool === TEACHER_TOOL_TYPES.HIGHLIGHTER) {
-        return TEACHER_HIGHLIGHTER_COLOUR;
-    }
     return teacherPenColour;
 }
 
 function getTeacherBrushPreviewOpacity() {
-    if (teacherActiveTool === TEACHER_TOOL_TYPES.HIGHLIGHTER) {
-        return clampNumber(TEACHER_HIGHLIGHTER_OPACITY + 0.25, 0.4, 1);
-    }
     return 1;
 }
 
@@ -1847,16 +2089,25 @@ function sendTeacherAnnotationsToStudent(student, reason = 'update') {
         ? []
         : cloneTeacherAnnotations(student.teacherAnnotations);
 
+    const hasAnnotations = Array.isArray(annotations) && annotations.length > 0;
+    if (hasAnnotations) {
+        markStudentReviewed(student);
+    }
+
+    const reviewed = Boolean(student.teacherHasReviewed || hasAnnotations);
+
     const payload = {
         target: student.username,
         reason: reason || 'update',
-        annotations
+        annotations,
+        reviewed
     };
 
     safeSend('teacher_annotations', payload);
 }
 
 function attachTeacherPenToStudent(student) {
+    completeTeacherEraserAction({ cancel: true });
     teacherPenStudent = student || null;
     teacherPenDrawing = false;
     teacherPenCurrentPath = null;
@@ -1878,6 +2129,7 @@ function attachTeacherPenToStudent(student) {
 }
 
 function detachTeacherPenFromStudent() {
+    completeTeacherEraserAction({ cancel: true });
     teacherPenDrawing = false;
     teacherPenCurrentPath = null;
     teacherPenStudent = null;
@@ -1905,6 +2157,10 @@ function handleTeacherPenPointerDown(event) {
 
     const student = ensureTeacherPenCollections(teacherPenStudent);
 
+    if (teacherActiveTool !== TEACHER_TOOL_TYPES.ERASER) {
+        completeTeacherEraserAction({ cancel: true });
+    }
+
     if (teacherActiveTool === TEACHER_TOOL_TYPES.ERASER) {
         const point = getTeacherOverlayPoint(event);
         if (!point) {
@@ -1916,7 +2172,7 @@ function handleTeacherPenPointerDown(event) {
 
         const removal = eraseTeacherAnnotationsAtPoint(point.x, point.y);
         if (removal) {
-            recordTeacherHistory(student, { type: 'erase', path: removal.path, index: removal.index });
+            appendTeacherEraserRemoval(student, removal);
             renderTeacherAnnotations();
             updateTeacherPenUi();
             queueTeacherAnnotationBroadcast('update', true);
@@ -1955,7 +2211,7 @@ function handleTeacherPenPointerMove(event) {
 
         const removal = eraseTeacherAnnotationsAtPoint(point.x, point.y);
         if (removal) {
-            recordTeacherHistory(teacherPenStudent, { type: 'erase', path: removal.path, index: removal.index });
+            appendTeacherEraserRemoval(teacherPenStudent, removal);
             renderTeacherAnnotations();
             updateTeacherPenUi();
             queueTeacherAnnotationBroadcast('update');
@@ -1974,7 +2230,9 @@ function handleTeacherPenPointerUp(event) {
 
     event.preventDefault();
 
-    if (teacherActiveTool === TEACHER_TOOL_TYPES.ERASER) {
+    const isEraser = teacherActiveTool === TEACHER_TOOL_TYPES.ERASER;
+
+    if (isEraser) {
         teacherPenDrawing = false;
         teacherPenCurrentPath = null;
 
@@ -1986,11 +2244,13 @@ function handleTeacherPenPointerUp(event) {
             }
         }
 
+        completeTeacherEraserAction();
         updateTeacherPenUi();
         queueTeacherAnnotationBroadcast('update', true);
         return;
     }
 
+    completeTeacherEraserAction({ cancel: true });
     addTeacherPenPoint(event);
 
     const completedPath = teacherPenCurrentPath;
@@ -2032,6 +2292,9 @@ function addTeacherPenPoint(event) {
     }
 
     teacherPenCurrentPath.points.push({ x: point.x, y: point.y, p: 1 });
+    if (teacherPenStudent) {
+        markStudentReviewed(teacherPenStudent);
+    }
 
     renderTeacherAnnotations();
     updateTeacherPenUi();
@@ -2097,6 +2360,9 @@ function populatePresetPreviews() {
         const preset = getPresetById(presetId);
         if (preset?.imageData) {
             image.src = preset.imageData;
+        }
+        if (preset?.previewAlt) {
+            image.alt = preset.previewAlt;
         }
     });
 }
@@ -2308,7 +2574,15 @@ function updateStudentModalMeta(student) {
         return;
     }
 
-    studentModalSubtitle.textContent = student.updatedAt?.textContent || '';
+    const parts = [];
+    const activityText = student.updatedAt?.textContent || '';
+    if (activityText) {
+        parts.push(activityText);
+    }
+    if (student.teacherHasReviewed) {
+        parts.push('Reviewed by you');
+    }
+    studentModalSubtitle.textContent = parts.join(' • ');
 }
 
 function startSyncLoop() {
@@ -2692,7 +2966,16 @@ function renderPresetSummary() {
     const art = document.createElement('div');
     art.className = 'mode-panel__preset-art';
     if (preset.imageData) {
-        art.style.backgroundImage = `url(${preset.imageData})`;
+        const artImage = document.createElement('img');
+        artImage.src = preset.imageData;
+        artImage.alt = preset.previewAlt || `${preset.label} template preview`;
+        artImage.loading = 'lazy';
+        art.appendChild(artImage);
+    } else {
+        const placeholder = document.createElement('span');
+        placeholder.className = 'mode-panel__preset-placeholder';
+        placeholder.textContent = 'Preview unavailable';
+        art.appendChild(placeholder);
     }
 
     const meta = document.createElement('div');
@@ -2851,6 +3134,8 @@ function clearAllStudentCanvases(background = null) {
         student.teacherAnnotations = [];
         student.teacherHistory = [];
         student.teacherRedoStack = [];
+
+        clearStudentReview(student);
 
         drawStudentCanvas(student);
         student.updatedAt.textContent = 'Awaiting activity';
@@ -3324,21 +3609,9 @@ function cloneTeacherAnnotations(annotations) {
         const erase = Boolean(path?.erase);
         const opacity = typeof path?.opacity === 'number' && Number.isFinite(path.opacity)
             ? clampNumber(path.opacity, 0, 1)
-            : (erase ? 1 : 1);
-        const baseComposite = typeof path?.composite === 'string' && path.composite.trim().length > 0
-            ? path.composite.trim()
-            : null;
-        const tool = typeof path?.tool === 'string' && path.tool.trim().length > 0
-            ? path.tool.trim()
-            : (erase
-                ? TEACHER_TOOL_TYPES.ERASER
-                : (baseComposite === TEACHER_HIGHLIGHTER_COMPOSITE
-                    ? TEACHER_TOOL_TYPES.HIGHLIGHTER
-                    : TEACHER_TOOL_TYPES.PEN));
-        const composite = erase
-            ? 'destination-out'
-            : (baseComposite
-                || (tool === TEACHER_TOOL_TYPES.HIGHLIGHTER ? TEACHER_HIGHLIGHTER_COMPOSITE : 'source-over'));
+            : 1;
+        const tool = erase ? TEACHER_TOOL_TYPES.ERASER : TEACHER_TOOL_TYPES.PEN;
+        const composite = erase ? 'destination-out' : 'source-over';
 
         return {
             color,
@@ -3619,58 +3892,62 @@ function createChineseVectorData() {
 }
 
 function createGraphCrossVectorData() {
+    const width = 800;
+    const height = 600;
+    const margin = 40;
+    const spacing = 60;
     const elements = [
         {
-            type: 'rect',
-            x: 64,
-            y: 64,
-            width: 896,
-            height: 896,
-            stroke: '#d1d5db',
-            strokeWidth: 6,
-            fill: '#ffffff'
+            type: 'roundedRect',
+            x: margin,
+            y: margin,
+            width: width - margin * 2,
+            height: height - margin * 2,
+            stroke: '#cbd5f5',
+            strokeWidth: 4,
+            fill: '#ffffff',
+            radius: 18
         }
     ];
 
     const gridColor = '#e2e8f0';
     const gridStroke = 2;
-    const gridLines = [192, 320, 448, 576, 704, 832];
 
-    gridLines.forEach((y) => {
+    for (let y = margin + spacing; y < height - margin; y += spacing) {
         elements.push({
             type: 'line',
-            x1: 64,
+            x1: margin,
             y1: y,
-            x2: 960,
+            x2: width - margin,
             y2: y,
             stroke: gridColor,
             strokeWidth: gridStroke
         });
-    });
+    }
 
-    gridLines.forEach((x) => {
+    for (let x = margin + spacing; x < width - margin; x += spacing) {
         elements.push({
             type: 'line',
             x1: x,
-            y1: 64,
+            y1: margin,
             x2: x,
-            y2: 960,
+            y2: height - margin,
             stroke: gridColor,
             strokeWidth: gridStroke
         });
-    });
+    }
 
-    const axisStroke = '#4b5563';
-    const axisWidth = 8;
-    const headLength = 36;
-    const headWidth = 24;
+    const axisStroke = '#1f2937';
+    const axisWidth = 6;
+    const headLength = 26;
+    const headWidth = 18;
 
     elements.push({
         type: 'arrow',
-        x1: 80,
-        y1: 512,
-        x2: 944,
-        y2: 512,
+        x1: margin,
+        y1: height / 2,
+        x2: width - margin,
+        y2: height / 2,
         stroke: axisStroke,
         strokeWidth: axisWidth,
         cap: 'round',
@@ -3681,10 +3958,10 @@ function createGraphCrossVectorData() {
 
     elements.push({
         type: 'arrow',
-        x1: 512,
-        y1: 944,
-        x2: 512,
-        y2: 80,
+        x1: width / 2,
+        y1: height - margin,
+        x2: width / 2,
+        y2: margin,
         stroke: axisStroke,
         strokeWidth: axisWidth,
         cap: 'round',
@@ -3694,66 +3971,69 @@ function createGraphCrossVectorData() {
     });
 
     return cloneBackgroundVectorDefinition({
-        width: 1024,
-        height: 1024,
+        width,
+        height,
         elements
     });
 }
 
 function createGraphCornerVectorData() {
+    const width = 800;
+    const height = 600;
+    const margin = 40;
+    const spacing = 60;
     const elements = [
         {
-            type: 'rect',
-            x: 64,
-            y: 64,
-            width: 896,
-            height: 896,
-            stroke: '#d1d5db',
-            strokeWidth: 6,
-            fill: '#ffffff'
+            type: 'roundedRect',
+            x: margin,
+            y: margin,
+            width: width - margin * 2,
+            height: height - margin * 2,
+            stroke: '#cbd5f5',
+            strokeWidth: 4,
+            fill: '#ffffff',
+            radius: 18
         }
     ];
 
     const gridColor = '#e2e8f0';
     const gridStroke = 2;
-    const horizontalLines = [832, 704, 576, 448, 320, 192];
-    const verticalLines = [192, 320, 448, 576, 704, 832];
 
-    horizontalLines.forEach((y) => {
+    for (let y = margin + spacing; y < height - margin; y += spacing) {
         elements.push({
             type: 'line',
-            x1: 64,
+            x1: margin,
             y1: y,
-            x2: 960,
+            x2: width - margin,
             y2: y,
             stroke: gridColor,
             strokeWidth: gridStroke
         });
-    });
+    }
 
-    verticalLines.forEach((x) => {
+    for (let x = margin + spacing; x < width - margin; x += spacing) {
         elements.push({
             type: 'line',
             x1: x,
-            y1: 64,
+            y1: margin,
             x2: x,
-            y2: 960,
+            y2: height - margin,
             stroke: gridColor,
             strokeWidth: gridStroke
         });
-    });
+    }
 
-    const axisStroke = '#334155';
-    const axisWidth = 10;
-    const headLength = 40;
-    const headWidth = 26;
+    const axisStroke = '#1f2937';
+    const axisWidth = 6;
+    const headLength = 26;
+    const headWidth = 18;
 
     elements.push({
         type: 'arrow',
-        x1: 96,
-        y1: 896,
-        x2: 912,
-        y2: 896,
+        x1: margin,
+        y1: height - margin,
+        x2: width - margin,
+        y2: height - margin,
         stroke: axisStroke,
         strokeWidth: axisWidth,
         cap: 'round',
@@ -3764,10 +4044,10 @@ function createGraphCornerVectorData() {
 
     elements.push({
         type: 'arrow',
-        x1: 96,
-        y1: 896,
-        x2: 96,
-        y2: 112,
+        x1: margin,
+        y1: height - margin,
+        x2: margin,
+        y2: margin,
         stroke: axisStroke,
         strokeWidth: axisWidth,
         cap: 'round',
@@ -3777,8 +4057,8 @@ function createGraphCornerVectorData() {
     });
 
     return cloneBackgroundVectorDefinition({
-        width: 1024,
-        height: 1024,
+        width,
+        height,
         elements
     });
 }
