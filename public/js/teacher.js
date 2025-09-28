@@ -126,6 +126,7 @@ let modeOptionButtons = [];
 let modePreviewImages = [];
 let isModeModalOpen = false;
 let modeModalReturnFocus = null;
+let studentModalResizeObserver = null;
 const presenceKey = `teacher-${Math.random().toString(36).slice(2, 10)}`;
 const students = new Map();
 const GRID_STORAGE_KEY = 'teacher-grid-columns';
@@ -789,6 +790,16 @@ function setupStudentModal() {
             closeStudentModal();
         }
     });
+
+    if (typeof ResizeObserver === 'function' && !studentModalResizeObserver) {
+        const wrapper = studentModalCanvas.parentElement;
+        if (wrapper) {
+            studentModalResizeObserver = new ResizeObserver(() => {
+                resizeStudentModalCanvas();
+            });
+            studentModalResizeObserver.observe(wrapper);
+        }
+    }
 }
 
 function setupModeModal() {
@@ -996,6 +1007,10 @@ function openStudentModal(username, triggerElement) {
     updateStudentModalMeta(student);
     drawStudentCanvas(student);
 
+    resizeStudentModalCanvas();
+    window.addEventListener('resize', resizeStudentModalCanvas);
+    requestAnimationFrame(resizeStudentModalCanvas);
+
     if (studentModalClose) {
         studentModalClose.focus();
     }
@@ -1020,11 +1035,49 @@ function closeStudentModal() {
     studentModal.setAttribute('hidden', '');
     studentModal.setAttribute('aria-hidden', 'true');
     removeBodyModalLock();
+    window.removeEventListener('resize', resizeStudentModalCanvas);
 
     if (modalReturnFocus && typeof modalReturnFocus.focus === 'function' && document.contains(modalReturnFocus)) {
         modalReturnFocus.focus();
     }
     modalReturnFocus = null;
+}
+
+function resizeStudentModalCanvas() {
+    if (!studentModalCanvas) {
+        return;
+    }
+
+    const container = studentModalCanvas.parentElement;
+    if (!container) {
+        return;
+    }
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    if (!width || !height) {
+        return;
+    }
+
+    const styles = window.getComputedStyle(container);
+    const paddingX = parseFloat(styles.paddingLeft || '0') + parseFloat(styles.paddingRight || '0');
+    const paddingY = parseFloat(styles.paddingTop || '0') + parseFloat(styles.paddingBottom || '0');
+
+    const availableWidth = Math.max(0, width - paddingX);
+    const availableHeight = Math.max(0, height - paddingY);
+    if (!availableWidth || !availableHeight) {
+        return;
+    }
+
+    const { drawWidth, drawHeight } = calculateContainDimensions(
+        BASE_CANVAS_WIDTH,
+        BASE_CANVAS_HEIGHT,
+        availableWidth,
+        availableHeight
+    );
+
+    studentModalCanvas.style.width = `${drawWidth}px`;
+    studentModalCanvas.style.height = `${drawHeight}px`;
 }
 
 function updateStudentModalMeta(student) {
