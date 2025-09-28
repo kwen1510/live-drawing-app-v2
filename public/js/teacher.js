@@ -1494,7 +1494,7 @@ function drawSmoothStudentPath(ctx, path) {
 
     if (points.length === 1) {
         const [point] = points;
-        const radius = Math.max(baseWidth * (point.p + 0.05), baseWidth * 0.35, baseWidth / 2, 0.5);
+        const radius = Math.max(baseWidth * 0.5, baseWidth * 0.35, 0.5);
         ctx.beginPath();
         ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
         ctx.fillStyle = strokeColor;
@@ -1509,7 +1509,7 @@ function drawSmoothStudentPath(ctx, path) {
     for (let i = 1; i < points.length; i += 1) {
         const current = points[i];
         const midpoint = getStudentMidpoint(previous, current);
-        const width = computeStudentSegmentWidth(previous.p, current.p, baseWidth);
+        const width = computeStudentSegmentWidth(baseWidth);
 
         ctx.beginPath();
         ctx.moveTo(startPoint.x, startPoint.y);
@@ -1525,7 +1525,7 @@ function drawSmoothStudentPath(ctx, path) {
     }
 
     const lastPoint = points[points.length - 1];
-    const finalWidth = computeStudentSegmentWidth(lastPoint.p, lastPoint.p, baseWidth);
+    const finalWidth = computeStudentSegmentWidth(baseWidth);
     const radius = Math.max(baseWidth / 2, finalWidth / 2, baseWidth * 0.35);
     ctx.beginPath();
     ctx.arc(lastPoint.x, lastPoint.y, radius, 0, Math.PI * 2);
@@ -1541,12 +1541,12 @@ function normaliseStudentPoints(rawPoints) {
         }
 
         if (Array.isArray(point)) {
-            const [x, y, pressure] = point;
+            const [x, y] = point;
             if (typeof x === 'number' && typeof y === 'number') {
                 accumulator.push({
                     x,
                     y,
-                    p: typeof pressure === 'number' ? studentClamp(pressure, 0.05, 1) : 0.5
+                    p: 1
                 });
             }
             return accumulator;
@@ -1555,13 +1555,10 @@ function normaliseStudentPoints(rawPoints) {
         if (typeof point === 'object') {
             const { x, y } = point;
             if (typeof x === 'number' && typeof y === 'number') {
-                const pressure = typeof point.p === 'number'
-                    ? point.p
-                    : (typeof point.pressure === 'number' ? point.pressure : 0.5);
                 accumulator.push({
                     x,
                     y,
-                    p: studentClamp(pressure, 0.05, 1)
+                    p: 1
                 });
             }
         }
@@ -1577,13 +1574,10 @@ function getStudentMidpoint(a, b) {
     };
 }
 
-function computeStudentSegmentWidth(pressureA, pressureB, baseWidth) {
+function computeStudentSegmentWidth(baseWidth) {
     const base = typeof baseWidth === 'number' && baseWidth > 0 ? baseWidth : 1.6;
-    const average = ((pressureA || 0.5) + (pressureB || 0.5)) / 2;
     const minWidth = base * 0.35;
-    const maxWidth = base * 1.6;
-    const width = base * (average + 0.05);
-    return studentClamp(width, Math.max(0.75, minWidth), Math.max(minWidth, maxWidth));
+    return Math.max(Math.max(0.75, minWidth), base);
 }
 
 function studentClamp(value, min, max) {

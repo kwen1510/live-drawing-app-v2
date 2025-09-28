@@ -987,7 +987,7 @@ function addPointToStroke(rawPoint) {
     const point = {
         x: rawPoint.x,
         y: rawPoint.y,
-        p: clamp(typeof rawPoint.p === 'number' && rawPoint.p > 0 ? rawPoint.p : 0.5, 0.05, 1)
+        p: 1
     };
 
     drawingState.buffer.push(point);
@@ -1149,7 +1149,7 @@ function eraseAlongPath(startPoint, endPoint) {
         eraseStrokeAtPoint({
             x: startPoint.x + (endPoint.x - startPoint.x) * t,
             y: startPoint.y + (endPoint.y - startPoint.y) * t,
-            p: endPoint.p
+            p: 1
         });
     }
 }
@@ -1170,7 +1170,7 @@ function findStrokeIndexAtPoint(point) {
         const hitPadding = Math.max(baseWidth * 0.6, 6);
 
         if (points.length === 1) {
-            const radius = clamp(baseWidth * (points[0].p + 0.05), baseWidth * 0.45, baseWidth * 1.6);
+            const radius = clamp(baseWidth * 0.5, baseWidth * 0.45, baseWidth * 0.8);
             if (distanceBetweenPoints(point, points[0]) <= radius + hitPadding) {
                 return i;
             }
@@ -1197,8 +1197,7 @@ function getStrokeBaseWidth(path) {
 }
 
 function getStrokeWidthForSegment(baseWidth, a, b) {
-    const averagePressure = ((a.p ?? 0.5) + (b.p ?? 0.5)) * 0.5;
-    return baseWidth * (averagePressure + 0.05);
+    return baseWidth;
 }
 
 function distanceBetweenPoints(a, b) {
@@ -1332,9 +1331,7 @@ function drawSmoothStroke(flush = false) {
     for (let i = 1; i < points.length; i += 1) {
         const current = points[i];
         const midpoint = getMidpoint(previous, current);
-        const width = baseWidth * (((previous.p + current.p) * 0.5) + 0.05);
-
-        ctx.lineWidth = width;
+        ctx.lineWidth = baseWidth;
         ctx.quadraticCurveTo(previous.x, previous.y, midpoint.x, midpoint.y);
         ctx.stroke();
 
@@ -1375,15 +1372,8 @@ function resizeCanvas() {
         return;
     }
 
-    const { drawWidth, drawHeight } = calculateContainDimensions(
-        BASE_CANVAS_WIDTH,
-        BASE_CANVAS_HEIGHT,
-        containerRect.width,
-        containerRect.height
-    );
-
-    const displayWidth = Math.max(1, drawWidth);
-    const displayHeight = Math.max(1, drawHeight);
+    const displayWidth = Math.max(1, containerRect.width);
+    const displayHeight = Math.max(1, containerRect.height);
 
     canvas.style.width = `${displayWidth}px`;
     canvas.style.height = `${displayHeight}px`;
@@ -2008,9 +1998,7 @@ function renderStoredPath(path) {
     for (let i = 1; i < points.length; i += 1) {
         const current = points[i];
         const midpoint = getMidpoint(previous, current);
-        const width = stroke.width * (((previous.p + current.p) * 0.5) + 0.05);
-
-        ctx.lineWidth = width;
+        ctx.lineWidth = stroke.width;
         ctx.quadraticCurveTo(previous.x, previous.y, midpoint.x, midpoint.y);
         ctx.stroke();
 
@@ -2079,7 +2067,7 @@ function getCanvasPoint(event) {
     return {
         x,
         y,
-        p: typeof event.pressure === 'number' && event.pressure > 0 ? event.pressure : 0.5
+        p: 1
     };
 }
 
@@ -2105,7 +2093,7 @@ function drawDot(context, point, stroke) {
     }
 
     const baseWidth = typeof stroke.width === 'number' && stroke.width > 0 ? stroke.width : DEFAULT_BRUSH_SIZE;
-    const radius = clamp(baseWidth * (point.p + 0.05), baseWidth * 0.45, baseWidth * 1.6);
+    const radius = clamp(baseWidth * 0.5, baseWidth * 0.45, baseWidth * 0.8);
 
     context.save();
     context.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over';
@@ -2163,7 +2151,7 @@ function normaliseDisplayPoint(point) {
     const x = clamp((point.x / canvasSize.width) * BASE_CANVAS_WIDTH, 0, BASE_CANVAS_WIDTH);
     const y = clamp((point.y / canvasSize.height) * BASE_CANVAS_HEIGHT, 0, BASE_CANVAS_HEIGHT);
 
-    return [x, y, clamp(point.p, 0.05, 1)];
+    return [x, y, 1];
 }
 
 function normaliseStoredPoints(rawPoints) {
@@ -2177,14 +2165,11 @@ function normaliseStoredPoints(rawPoints) {
 function denormalisePoint(raw) {
     let x;
     let y;
-    let pressure;
-
     if (Array.isArray(raw)) {
-        [x, y, pressure] = raw;
+        [x, y] = raw;
     } else if (raw && typeof raw === 'object') {
         x = raw.x;
         y = raw.y;
-        pressure = raw.p ?? raw.pressure;
     }
 
     if (typeof x !== 'number' || typeof y !== 'number') {
@@ -2197,7 +2182,7 @@ function denormalisePoint(raw) {
     return {
         x: displayX,
         y: displayY,
-        p: clamp(typeof pressure === 'number' ? pressure : 0.5, 0.05, 1)
+        p: 1
     };
 }
 
