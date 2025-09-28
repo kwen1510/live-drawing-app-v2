@@ -58,9 +58,8 @@
 
   const mid = (p1, p2) => ({ x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 });
 
-  function addPoint(x, y, pressure = 0.5) {
-    const p = Math.max(0.1, Math.min(1, pressure || 0.5));
-    points.push({ x, y, p });
+  function addPoint(x, y) {
+    points.push({ x, y, p: 1 });
   }
 
   function drawSmooth() {
@@ -72,7 +71,7 @@
     if (points.length === 1) {
       const a = points[0];
       ctx.beginPath();
-      ctx.lineWidth = base * a.p * 2;
+      ctx.lineWidth = base;
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(a.x + 0.01, a.y + 0.01);
       ctx.stroke();
@@ -86,8 +85,7 @@
     for (let i = 1; i < points.length; i++) {
       const b = points[i];
       const m = mid(a, b);
-      const pw = base * ((a.p + b.p) * 0.5 + 0.05);
-      ctx.lineWidth = pw;
+      ctx.lineWidth = base;
       ctx.quadraticCurveTo(a.x, a.y, m.x, m.y);
       a = b;
     }
@@ -112,8 +110,8 @@
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    addPoint(x, y, e.pressure);
-    addPoint(x, y, e.pressure);
+    addPoint(x, y);
+    addPoint(x, y);
     scheduleDraw();
   }
 
@@ -121,7 +119,7 @@
     if (!drawing) return;
     if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
     const rect = canvas.getBoundingClientRect();
-    addPoint(e.clientX - rect.left, e.clientY - rect.top, e.pressure);
+    addPoint(e.clientX - rect.left, e.clientY - rect.top);
     scheduleDraw();
   }
 
