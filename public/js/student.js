@@ -1170,6 +1170,25 @@ function resizeCanvas() {
         return;
     }
 
+    const container = studentCanvasSurface || canvas.parentElement;
+    const containerRect = container?.getBoundingClientRect?.();
+    if (!containerRect || !containerRect.width || !containerRect.height) {
+        return;
+    }
+
+    const { drawWidth, drawHeight } = calculateContainDimensions(
+        BASE_CANVAS_WIDTH,
+        BASE_CANVAS_HEIGHT,
+        containerRect.width,
+        containerRect.height
+    );
+
+    const displayWidth = Math.max(1, drawWidth);
+    const displayHeight = Math.max(1, drawHeight);
+
+    canvas.style.width = `${displayWidth}px`;
+    canvas.style.height = `${displayHeight}px`;
+
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height) {
         return;
