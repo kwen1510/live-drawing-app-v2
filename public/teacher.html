@@ -197,91 +197,62 @@
                             </div>
                         </div>
                     </header>
-                    <div class="student-toolbar teacher-toolbar student-modal__toolbar" role="toolbar" aria-label="Teacher annotation controls">
-                        <button
-                            id="teacherPenToggle"
-                            class="student-toolbar__button teacher-toolbar__button teacher-toolbar__button--toggle"
-                            type="button"
-                            aria-pressed="false"
-                            aria-label="Start annotating"
-                            data-tooltip="Start annotating"
-                        >
-                            <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                <path fill="currentColor" d="M5.11 15.88 15.88 5.11a2.4 2.4 0 0 1 3.39 0l.62.62a2.4 2.4 0 0 1 0 3.39L9.12 19.89a2.4 2.4 0 0 1-1.12.63l-4.02 1.04a.75.75 0 0 1-.91-.91l1.03-4.02a2.4 2.4 0 0 1 .63-1.12z" />
-                                <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M14.8 6.7 18.1 10"/>
-                            </svg>
-                            <span class="teacher-toolbar__label">Annotate</span>
-                        </button>
-
-                        <div class="student-toolbar__group teacher-toolbar__group" role="group" aria-label="Annotation colours">
+                    <div class="student-toolbar teacher-toolbar student-modal__toolbar" role="toolbar" aria-label="Teacher feedback controls">
+                        <div class="student-toolbar__group" role="group" aria-label="Choose colour">
                             <button
-                                class="student-toolbar__button student-toolbar__button--color teacher-toolbar__button teacher-toolbar__button--color is-active"
+                                class="student-toolbar__button student-toolbar__button--color is-active"
                                 type="button"
+                                data-color="#111827"
                                 data-pen-colour="#111827"
                                 style="--swatch-color: #111827"
                                 aria-label="Use black ink"
                                 aria-pressed="true"
-                                data-tooltip="Black"
                             ></button>
                             <button
-                                class="student-toolbar__button student-toolbar__button--color teacher-toolbar__button teacher-toolbar__button--color"
+                                class="student-toolbar__button student-toolbar__button--color"
                                 type="button"
+                                data-color="#2563eb"
                                 data-pen-colour="#2563eb"
                                 style="--swatch-color: #2563eb"
                                 aria-label="Use blue ink"
                                 aria-pressed="false"
-                                data-tooltip="Blue"
                             ></button>
                             <button
-                                class="student-toolbar__button student-toolbar__button--color teacher-toolbar__button teacher-toolbar__button--color"
+                                class="student-toolbar__button student-toolbar__button--color"
                                 type="button"
+                                data-color="#16a34a"
                                 data-pen-colour="#16a34a"
                                 style="--swatch-color: #16a34a"
                                 aria-label="Use green ink"
                                 aria-pressed="false"
-                                data-tooltip="Green"
                             ></button>
                         </div>
-
-                        <div class="student-toolbar__group teacher-toolbar__group" role="group" aria-label="Annotation tools">
+                        <div class="student-toolbar__group" role="group" aria-label="Drawing mode">
                             <button
-                                class="student-toolbar__button teacher-toolbar__button is-active"
+                                class="student-toolbar__button is-active"
                                 type="button"
+                                data-tool="pen"
                                 data-teacher-tool="pen"
                                 aria-pressed="true"
-                                aria-label="Pen tool"
-                                data-tooltip="Pen"
-                            >
-                                <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                    <path fill="currentColor" d="M11.29 3.04 4.5 17.89 3.38 22l4.11-1.12L22 6.38 17.62 2 11.29 3.04zM5.92 19.46l.69-2.71 7.5-7.5 2.03 2.03-7.5 7.5-2.72.68z" />
-                                </svg>
-                            </button>
+                            >Pen</button>
                             <button
-                                class="student-toolbar__button teacher-toolbar__button"
+                                class="student-toolbar__button"
                                 type="button"
+                                data-tool="eraser"
                                 data-teacher-tool="eraser"
                                 aria-pressed="false"
-                                aria-label="Eraser"
-                                data-tooltip="Eraser"
-                            >
-                                <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                    <path d="M3.59 16.59l6.3 6.3a1 1 0 001.41 0L21.41 12a2 2 0 000-2.83l-5.58-5.58a2 2 0 00-2.83 0l-9.39 9.39a2 2 0 000 2.83zM13 5.41a1 1 0 011.41 0L19.59 10 12 17.59 8.41 14 13 9.41zM7 15.41l3.59 3.59-1.3 1.3a1 1 0 01-1.41 0L4.7 17.7a1 1 0 010-1.41L7 14.99z"></path>
-                                </svg>
-                            </button>
+                            >Eraser</button>
                         </div>
-
-                        <div class="student-toolbar__group teacher-toolbar__group teacher-toolbar__group--brush" role="group" aria-label="Brush size controls">
+                        <div class="student-toolbar__group student-toolbar__group--brush" role="group" aria-label="Pen size controls">
                             <button
                                 id="teacherBrushSizeButton"
-                                class="student-toolbar__button student-toolbar__button--popover teacher-toolbar__button teacher-toolbar__button--popover"
+                                class="student-toolbar__button student-toolbar__button--popover"
                                 type="button"
                                 aria-haspopup="dialog"
                                 aria-expanded="false"
                                 aria-controls="teacherBrushSizePopover"
-                                aria-label="Adjust pen size"
-                                data-tooltip="Pen size"
                             >
-                                <span class="teacher-toolbar__label">Pen size</span>
+                                Pen size
                                 <span class="brush-size-indicator" id="teacherBrushSizeIndicator" aria-hidden="true"></span>
                             </button>
                             <div
@@ -289,11 +260,11 @@
                                 class="brush-size-popover"
                                 role="dialog"
                                 aria-modal="false"
-                                aria-labelledby="teacherBrushSizeTitle"
+                                aria-labelledby="teacherBrushSizePopoverTitle"
                                 hidden
                             >
                                 <div class="brush-size-popover__header">
-                                    <span class="brush-size-popover__title" id="teacherBrushSizeTitle">Pen size</span>
+                                    <span class="brush-size-popover__title" id="teacherBrushSizePopoverTitle">Pen size</span>
                                     <span class="brush-size-popover__value" id="teacherBrushSizeValue"></span>
                                 </div>
                                 <div class="brush-size-popover__control">
@@ -312,64 +283,13 @@
                                 </div>
                             </div>
                         </div>
-
-                        <div class="student-toolbar__group teacher-toolbar__group" role="group" aria-label="Annotation history controls">
-                            <button
-                                id="teacherUndoButton"
-                                class="student-toolbar__button teacher-toolbar__button teacher-toolbar__button--icon"
-                                type="button"
-                                disabled
-                                aria-label="Undo annotation"
-                                data-tooltip="Undo"
-                            >
-                                <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                    <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 9 3 12l3 3" />
-                                    <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 0 0-9-9 9.05 9.05 0 0 0-6.364 2.636L6 9" />
-                                </svg>
-                            </button>
-                            <button
-                                id="teacherRedoButton"
-                                class="student-toolbar__button teacher-toolbar__button teacher-toolbar__button--icon"
-                                type="button"
-                                disabled
-                                aria-label="Redo annotation"
-                                data-tooltip="Redo"
-                            >
-                                <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                    <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="m18 15 3-3-3-3" />
-                                    <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 0 1 9-9 9.05 9.05 0 0 1 6.364 2.636L18 9" />
-                                </svg>
-                            </button>
-                            <button
-                                id="teacherClearButton"
-                                class="student-toolbar__button student-toolbar__button--danger teacher-toolbar__button teacher-toolbar__button--danger teacher-toolbar__button--icon"
-                                type="button"
-                                disabled
-                                aria-label="Clear annotations"
-                                data-tooltip="Clear annotations"
-                            >
-                                <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                    <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 7h14" />
-                                    <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M10 3h4l1 2h5" />
-                                    <rect x="6" y="7" width="12" height="13" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="1.6" />
-                                </svg>
-                            </button>
+                        <div class="student-toolbar__group" role="group" aria-label="Canvas actions">
+                            <button id="teacherUndoButton" class="student-toolbar__button" type="button" disabled>Undo</button>
+                            <button id="teacherRedoButton" class="student-toolbar__button" type="button" disabled>Redo</button>
+                            <button id="teacherClearButton" class="student-toolbar__button student-toolbar__button--danger" type="button" disabled>Clear</button>
                         </div>
-
-                        <div class="student-toolbar__group teacher-toolbar__group" role="group" aria-label="Stylus preferences">
-                            <button
-                                id="teacherStylusModeButton"
-                                class="student-toolbar__button teacher-toolbar__button"
-                                type="button"
-                                aria-pressed="false"
-                                aria-label="Stylus mode"
-                                data-tooltip="Stylus mode"
-                            >
-                                <svg class="teacher-toolbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                    <path fill="currentColor" d="M21.67 6.33 17.67 2.33a1.25 1.25 0 0 0-1.77 0L3.1 15.13a1 1 0 0 0-.27.53L2 20.88a1 1 0 0 0 1.2 1.2l5.22-.83a1 1 0 0 0 .53-.27L21.67 8.1a1.25 1.25 0 0 0 0-1.77zm-9.28 9.28-4-4 6.22-6.22 4 4-6.22 6.22zm-1.72 1.72-2.12 2.12-3.35.53.53-3.35 2.12-2.12 2.82 2.82z" />
-                                </svg>
-                                <span class="teacher-toolbar__label">Stylus</span>
-                            </button>
+                        <div class="student-toolbar__group" role="group" aria-label="Stylus preferences">
+                            <button id="teacherStylusModeButton" class="student-toolbar__button" type="button" aria-pressed="false">Stylus mode</button>
                         </div>
                     </div>
                     <main class="student-canvas student-modal__canvas-shell" aria-label="Student drawing surface">
