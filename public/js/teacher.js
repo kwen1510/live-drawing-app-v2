@@ -190,6 +190,12 @@ let teacherStylusOnly = readTeacherStylusPreference();
 let teacherPenControlsReady = false;
 let teacherBrushPopoverOpen = false;
 let teacherBrushPopoverReturnFocus = null;
+const TEACHER_BRUSH_POPOVER_OFFSET = 12;
+const TEACHER_BRUSH_POPOVER_MARGIN = 16;
+const teacherBrushPopoverPositionState = {
+    rafId: null,
+    active: false
+};
 const teacherStrokeDrawState = {
     buffer: [],
     history: [],
@@ -1070,6 +1076,7 @@ function ensureStudentCard(username) {
         canvasWidth: BASE_CANVAS_WIDTH,
         canvasHeight: BASE_CANVAS_HEIGHT,
         paths: [],
+        pendingSegments: [],
         previewCanvas: null,
         previewCtx: null,
         teacherAnnotations: [],
@@ -1109,6 +1116,7 @@ function updateStudentCanvas(username, canvasState) {
     clearStudentReview(student);
 
     student.paths = Array.isArray(canvasState.paths) ? canvasState.paths : [];
+    student.pendingSegments = [];
     student.backgroundVectors = normaliseBackgroundVectorDefinition(canvasState.backgroundVectors);
 
     const size = canvasState.canvasSize || {};
@@ -1793,6 +1801,10 @@ function updateTeacherBrushUi({ updateSlider = true } = {}) {
     if (teacherBrushButton) {
         teacherBrushButton.setAttribute('aria-expanded', teacherBrushPopoverOpen ? 'true' : 'false');
     }
+
+    if (teacherBrushPopoverOpen) {
+        scheduleTeacherBrushPopoverReposition();
+    }
 }
 
 function toggleTeacherBrushPopover() {
@@ -1808,18 +1820,27 @@ function openTeacherBrushPopover() {
         return;
     }
 
-    teacherBrushPopover.hidden = false;
     teacherBrushPopoverOpen = true;
+    teacherBrushPopover.hidden = false;
+    teacherBrushPopover.classList.remove('hidden');
+    teacherBrushPopover.classList.remove('is-visible');
+    teacherBrushPopover.dataset.placement = '';
+    teacherBrushPopover.style.visibility = 'hidden';
     teacherBrushPopoverReturnFocus = document.activeElement instanceof HTMLElement
         ? document.activeElement
         : teacherBrushButton;
     teacherBrushButton.setAttribute('aria-expanded', 'true');
     updateTeacherBrushUi({ updateSlider: true });
-    if (teacherBrushSlider) {
-        teacherBrushSlider.focus();
-    } else {
-        teacherBrushPopover.focus?.();
-    }
+    startTeacherBrushPopoverPositioning();
+
+    requestAnimationFrame(() => {
+        teacherBrushPopover.classList.add('is-visible');
+        if (teacherBrushSlider) {
+            teacherBrushSlider.focus();
+        } else {
+            teacherBrushPopover.focus?.();
+        }
+    });
 }
 
 function closeTeacherBrushPopover() {
@@ -1827,8 +1848,12 @@ function closeTeacherBrushPopover() {
         return;
     }
 
-    teacherBrushPopover.hidden = true;
     teacherBrushPopoverOpen = false;
+    teacherBrushPopover.classList.remove('is-visible');
+    stopTeacherBrushPopoverPositioning();
+    teacherBrushPopover.hidden = true;
+    teacherBrushPopover.classList.add('hidden');
+    teacherBrushPopover.style.visibility = '';
 
     if (teacherBrushButton) {
         teacherBrushButton.setAttribute('aria-expanded', 'false');
@@ -1841,6 +1866,128 @@ function closeTeacherBrushPopover() {
             returnTarget.focus();
         }, 0);
     }
+}
+
+function startTeacherBrushPopoverPositioning() {
+    if (!teacherBrushPopover || !teacherBrushButton) {
+        return;
+    }
+
+    if (teacherBrushPopoverPositionState.active) {
+        scheduleTeacherBrushPopoverReposition();
+        return;
+    }
+
+    teacherBrushPopoverPositionState.active = true;
+    scheduleTeacherBrushPopoverReposition();
+    window.addEventListener('resize', scheduleTeacherBrushPopoverReposition, true);
+    window.addEventListener('scroll', handleTeacherBrushPopoverScroll, true);
+}
+
+function stopTeacherBrushPopoverPositioning() {
+    if (!teacherBrushPopoverPositionState.active) {
+        return;
+    }
+
+    teacherBrushPopoverPositionState.active = false;
+    window.removeEventListener('resize', scheduleTeacherBrushPopoverReposition, true);
+    window.removeEventListener('scroll', handleTeacherBrushPopoverScroll, true);
+
+    if (teacherBrushPopoverPositionState.rafId !== null) {
+        cancelAnimationFrame(teacherBrushPopoverPositionState.rafId);
+        teacherBrushPopoverPositionState.rafId = null;
+    }
+
+    if (teacherBrushPopover) {
+        teacherBrushPopover.style.left = '';
+        teacherBrushPopover.style.top = '';
+        teacherBrushPopover.style.transformOrigin = '';
+        teacherBrushPopover.style.visibility = '';
+        teacherBrushPopover.dataset.placement = '';
+    }
+}
+
+function scheduleTeacherBrushPopoverReposition() {
+    if (!teacherBrushPopoverOpen) {
+        return;
+    }
+
+    if (teacherBrushPopoverPositionState.rafId !== null) {
+        cancelAnimationFrame(teacherBrushPopoverPositionState.rafId);
+    }
+
+    teacherBrushPopoverPositionState.rafId = requestAnimationFrame(() => {
+        teacherBrushPopoverPositionState.rafId = null;
+        applyTeacherBrushPopoverPosition();
+    });
+}
+
+function applyTeacherBrushPopoverPosition() {
+    if (!teacherBrushPopoverOpen || !teacherBrushPopover || !teacherBrushButton) {
+        return;
+    }
+
+    const buttonRect = teacherBrushButton.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const margin = TEACHER_BRUSH_POPOVER_MARGIN;
+    const offset = TEACHER_BRUSH_POPOVER_OFFSET;
+
+    teacherBrushPopover.style.position = 'fixed';
+    teacherBrushPopover.style.visibility = 'hidden';
+
+    const rect = teacherBrushPopover.getBoundingClientRect();
+    const popoverWidth = rect.width || teacherBrushPopover.offsetWidth;
+    const popoverHeight = rect.height || teacherBrushPopover.offsetHeight;
+
+    let left = buttonRect.left + (buttonRect.width - popoverWidth) / 2;
+    if (left < margin) {
+        left = margin;
+    }
+    if (left + popoverWidth > viewportWidth - margin) {
+        left = Math.max(margin, viewportWidth - margin - popoverWidth);
+    }
+
+    let top = buttonRect.bottom + offset;
+    let placement = 'bottom';
+
+    if (top + popoverHeight > viewportHeight - margin) {
+        const aboveTop = buttonRect.top - offset - popoverHeight;
+        if (aboveTop >= margin) {
+            top = aboveTop;
+            placement = 'top';
+        } else {
+            top = Math.max(margin, viewportHeight - margin - popoverHeight);
+        }
+    }
+
+    teacherBrushPopover.dataset.placement = placement;
+    teacherBrushPopover.style.left = `${Math.round(left)}px`;
+    teacherBrushPopover.style.top = `${Math.round(top)}px`;
+    teacherBrushPopover.style.transformOrigin = placement === 'top' ? 'bottom center' : 'top center';
+    teacherBrushPopover.style.visibility = 'visible';
+}
+
+function handleTeacherBrushPopoverScroll() {
+    if (!teacherBrushPopoverOpen || !teacherBrushButton) {
+        return;
+    }
+
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const buttonRect = teacherBrushButton.getBoundingClientRect();
+
+    if (
+        buttonRect.bottom < 0
+        || buttonRect.top > viewportHeight
+        || buttonRect.right < 0
+        || buttonRect.left > viewportWidth
+    ) {
+        closeTeacherBrushPopover();
+        return;
+    }
+
+    scheduleTeacherBrushPopoverReposition();
 }
 
 function undoTeacherAnnotation() {
@@ -2062,7 +2209,7 @@ function readTeacherStylusPreference() {
         // Ignore storage read errors
     }
 
-    return true;
+    return false;
 }
 
 function writeTeacherStylusPreference(value) {
@@ -2725,6 +2872,8 @@ function openStudentModal(username, triggerElement) {
     student.previewCanvas = studentModalCanvas;
     student.previewCtx = studentModalCanvas.getContext('2d');
 
+    primeStudentModalCanvas(student);
+
     attachTeacherPenToStudent(student);
 
     addBodyModalLock();
@@ -2747,6 +2896,52 @@ function openStudentModal(username, triggerElement) {
     if (studentModalClose) {
         studentModalClose.focus();
     }
+}
+
+function primeStudentModalCanvas(student) {
+    if (!student || !studentModalCanvas) {
+        return;
+    }
+
+    const previewCtx = student.previewCtx || studentModalCanvas.getContext('2d');
+    const sourceCanvas = student.canvas;
+
+    if (!previewCtx) {
+        return;
+    }
+
+    resetCanvas(previewCtx, studentModalCanvas);
+
+    if (!sourceCanvas) {
+        return;
+    }
+
+    const { width: displayWidth, height: displayHeight } = getStudentDisplaySize(student);
+    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
+        displayWidth,
+        displayHeight,
+        studentModalCanvas.width,
+        studentModalCanvas.height
+    );
+
+    if (!drawWidth || !drawHeight) {
+        return;
+    }
+
+    previewCtx.save();
+    previewCtx.translate(offsetX, offsetY);
+    previewCtx.drawImage(
+        sourceCanvas,
+        0,
+        0,
+        sourceCanvas.width,
+        sourceCanvas.height,
+        0,
+        0,
+        drawWidth,
+        drawHeight
+    );
+    previewCtx.restore();
 }
 
 function closeStudentModal() {
@@ -3408,6 +3603,7 @@ function clearAllStudentCanvases(background = null) {
 
     students.forEach((student, username) => {
         student.paths = [];
+        student.pendingSegments = [];
 
         if (backgroundImage) {
             student.backgroundImageData = backgroundImage;
@@ -3445,6 +3641,23 @@ function clearAllStudentCanvases(background = null) {
 function applyDrawBatch(student, batch) {
     if (!student || !Array.isArray(batch) || batch.length === 0) {
         return;
+    }
+
+    if (!Array.isArray(student.pendingSegments)) {
+        student.pendingSegments = [];
+    }
+
+    const MAX_PENDING_SEGMENTS = 4000;
+    batch.forEach((segment) => {
+        const normalised = normaliseBatchSegment(segment);
+        if (normalised) {
+            student.pendingSegments.push(normalised);
+        }
+    });
+
+    if (student.pendingSegments.length > MAX_PENDING_SEGMENTS) {
+        const overflow = student.pendingSegments.length - MAX_PENDING_SEGMENTS;
+        student.pendingSegments.splice(0, overflow);
     }
 
     const targets = getStudentTargets(student);
@@ -3528,6 +3741,75 @@ function drawBatchToContext(ctx, batch) {
     });
 }
 
+function normaliseBatchSegment(segment) {
+    if (!segment || typeof segment !== 'object') {
+        return null;
+    }
+
+    const base = {
+        type: segment.type,
+        composite: segment.composite,
+        opacity: segment.opacity,
+        width: segment.width,
+        color: segment.color,
+        erase: segment.erase
+    };
+
+    if (segment.type === 'line') {
+        if (
+            Number.isFinite(segment.startX) &&
+            Number.isFinite(segment.startY) &&
+            Number.isFinite(segment.endX) &&
+            Number.isFinite(segment.endY)
+        ) {
+            return {
+                ...base,
+                startX: segment.startX,
+                startY: segment.startY,
+                endX: segment.endX,
+                endY: segment.endY
+            };
+        }
+        return null;
+    }
+
+    if (segment.type === 'dot') {
+        if (Number.isFinite(segment.x) && Number.isFinite(segment.y)) {
+            return {
+                ...base,
+                x: segment.x,
+                y: segment.y,
+                radius: segment.radius
+            };
+        }
+        return null;
+    }
+
+    if (segment.type === 'quadratic') {
+        if (
+            Number.isFinite(segment.startX) &&
+            Number.isFinite(segment.startY) &&
+            Number.isFinite(segment.controlX) &&
+            Number.isFinite(segment.controlY) &&
+            Number.isFinite(segment.endX) &&
+            Number.isFinite(segment.endY)
+        ) {
+            return {
+                ...base,
+                startX: segment.startX,
+                startY: segment.startY,
+                controlX: segment.controlX,
+                controlY: segment.controlY,
+                endX: segment.endX,
+                endY: segment.endY
+            };
+        }
+        return null;
+    }
+
+    return null;
+}
+
 function getStudentDisplaySize(student) {
     if (!student) {
         return { width: BASE_CANVAS_WIDTH, height: BASE_CANVAS_HEIGHT };
@@ -3590,6 +3872,9 @@ function drawStudentCanvas(student) {
             applyStudentCanvasTransform(ctx, canvas, student);
             drawStudentBackground(ctx, student.backgroundImageElement, student.backgroundVectors);
             renderStudentPaths(ctx, student.paths);
+            if (Array.isArray(student.pendingSegments) && student.pendingSegments.length > 0) {
+                drawBatchToContext(ctx, student.pendingSegments);
+            }
             if (ctx !== student.previewCtx) {
                 renderTeacherOverlay(ctx, student.teacherAnnotations);
             }
