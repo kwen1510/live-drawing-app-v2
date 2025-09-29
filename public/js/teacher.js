@@ -1,4 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.4/+esm';
+import { calculateOverlayPlacement } from './utils/layout.mjs';
 
 const statusBadge = document.getElementById('sessionStatusBadge');
 const connectionStatus = document.getElementById('connection-status');
@@ -2929,19 +2930,24 @@ function primeStudentModalCanvas(student) {
     }
 
     previewCtx.save();
-    previewCtx.translate(offsetX, offsetY);
-    previewCtx.drawImage(
-        sourceCanvas,
-        0,
-        0,
-        sourceCanvas.width,
-        sourceCanvas.height,
-        0,
-        0,
-        drawWidth,
-        drawHeight
-    );
-    previewCtx.restore();
+    try {
+        previewCtx.translate(offsetX, offsetY);
+        previewCtx.drawImage(
+            sourceCanvas,
+            0,
+            0,
+            sourceCanvas.width,
+            sourceCanvas.height,
+            0,
+            0,
+            drawWidth,
+            drawHeight
+        );
+    } catch (error) {
+        console.error('Failed to prime student modal canvas', error);
+    } finally {
+        previewCtx.restore();
+    }
 }
 
 function closeStudentModal() {
@@ -3011,8 +3017,11 @@ function resizeStudentModalCanvas() {
         availableHeight
     );
 
-    studentModalCanvas.style.width = `${drawWidth}px`;
-    studentModalCanvas.style.height = `${drawHeight}px`;
+    const roundedWidth = Math.max(0, Math.round(drawWidth));
+    const roundedHeight = Math.max(0, Math.round(drawHeight));
+
+    studentModalCanvas.style.width = `${roundedWidth}px`;
+    studentModalCanvas.style.height = `${roundedHeight}px`;
 
     alignTeacherOverlayCanvas();
     requestAnimationFrame(alignTeacherOverlayCanvas);
@@ -3028,23 +3037,45 @@ function alignTeacherOverlayCanvas() {
         return;
     }
 
-    const canvasRect = studentModalCanvas.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    if (!containerWidth || !containerHeight) {
+        return;
+    }
 
+    const canvasRect = studentModalCanvas.getBoundingClientRect();
     if (!canvasRect.width || !canvasRect.height) {
+        return;
+    }
+
+    const styles = window.getComputedStyle(container);
+    const paddingLeft = parseFloat(styles.paddingLeft || '0');
+    const paddingRight = parseFloat(styles.paddingRight || '0');
+    const paddingTop = parseFloat(styles.paddingTop || '0');
+    const paddingBottom = parseFloat(styles.paddingBottom || '0');
+
+    const placement = calculateOverlayPlacement({
+        containerWidth,
+        containerHeight,
+        paddingLeft,
+        paddingRight,
+        paddingTop,
+        paddingBottom,
+        drawWidth: canvasRect.width,
+        drawHeight: canvasRect.height
+    });
+
+    if (!placement.width || !placement.height) {
         return;
     }
 
     const scrollLeft = container.scrollLeft || 0;
     const scrollTop = container.scrollTop || 0;
 
-    const left = canvasRect.left - containerRect.left + scrollLeft;
-    const top = canvasRect.top - containerRect.top + scrollTop;
-
-    teacherOverlayCanvas.style.width = `${canvasRect.width}px`;
-    teacherOverlayCanvas.style.height = `${canvasRect.height}px`;
-    teacherOverlayCanvas.style.left = `${left}px`;
-    teacherOverlayCanvas.style.top = `${top}px`;
+    teacherOverlayCanvas.style.width = `${placement.width}px`;
+    teacherOverlayCanvas.style.height = `${placement.height}px`;
+    teacherOverlayCanvas.style.left = `${placement.left + scrollLeft}px`;
+    teacherOverlayCanvas.style.top = `${placement.top + scrollTop}px`;
 }
 
 function updateStudentModalMeta(student) {
