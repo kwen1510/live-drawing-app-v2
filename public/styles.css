@@ -1070,7 +1070,8 @@ input[type="range"]::-moz-range-thumb {
     background: transparent;
 }
 
-.student-modal__toolbar .teacher-toolbar__group {
+.student-modal__toolbar .teacher-toolbar__group,
+.student-modal__toolbar .student-toolbar__group {
     background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
     border-radius: 999px;
     border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
@@ -1079,19 +1080,23 @@ input[type="range"]::-moz-range-thumb {
     gap: 10px;
 }
 
-.student-modal__toolbar .teacher-toolbar__group + .teacher-toolbar__group {
+.student-modal__toolbar .teacher-toolbar__group + .teacher-toolbar__group,
+.student-modal__toolbar .student-toolbar__group + .student-toolbar__group {
     margin-left: 8px;
 }
 
-.student-modal__toolbar .teacher-toolbar__button {
+.student-modal__toolbar .teacher-toolbar__button,
+.student-modal__toolbar .student-toolbar__button {
     padding: 6px 16px;
 }
 
-.student-modal__toolbar .teacher-toolbar__button.teacher-toolbar__button--icon {
+.student-modal__toolbar .teacher-toolbar__button.teacher-toolbar__button--icon,
+.student-modal__toolbar .student-toolbar__button.student-toolbar__button--icon {
     padding: 8px 12px;
 }
 
-.student-modal__toolbar .teacher-toolbar__button.teacher-toolbar__button--color {
+.student-modal__toolbar .teacher-toolbar__button.teacher-toolbar__button--color,
+.student-modal__toolbar .student-toolbar__button.student-toolbar__button--color {
     padding: 4px;
 }
 

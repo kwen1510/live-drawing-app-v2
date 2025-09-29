@@ -1305,7 +1305,7 @@ function setupTeacherPenControls() {
         return;
     }
 
-    if (!teacherOverlayCanvas || !teacherPenToggle) {
+    if (!teacherOverlayCanvas) {
         return;
     }
 
@@ -1327,9 +1327,11 @@ function setupTeacherPenControls() {
     teacherOverlayCanvas.addEventListener('pointercancel', handleTeacherPenPointerUp, pointerListenerOptions);
     teacherOverlayCanvas.addEventListener('lostpointercapture', handleTeacherPenPointerUp);
 
-    teacherPenToggle.addEventListener('click', () => {
-        setTeacherPenActive(!teacherPenActive);
-    });
+    if (teacherPenToggle) {
+        teacherPenToggle.addEventListener('click', () => {
+            setTeacherPenActive(!teacherPenActive);
+        });
+    }
 
     teacherPenSwatches.forEach((swatch) => {
         if (!swatch) {
@@ -2230,7 +2232,7 @@ function attachTeacherPenToStudent(student) {
     const target = ensureTeacherPenCollections(teacherPenStudent);
     hydrateTeacherHistoryFromAnnotations(target);
 
-    setTeacherPenActive(false);
+    setTeacherPenActive(true);
     renderTeacherAnnotations();
     updateTeacherPenUi();
     queueTeacherAnnotationBroadcast('sync', true);
