@@ -568,6 +568,10 @@ input[type="range"]::-moz-range-thumb {
     border-radius: 20px;
 }
 
+.mode-panel__preview--image:not(.has-image) img {
+    display: none;
+}
+
 .image-preview__placeholder {
     display: grid;
     place-items: center;
