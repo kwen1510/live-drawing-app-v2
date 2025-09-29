@@ -2966,7 +2966,11 @@ function broadcastCanvas(reason = 'update') {
         canvasState: {
             paths: clonePaths(storedPaths),
             backgroundImage: backgroundImageData,
-            backgroundVectors: cloneBackgroundVectorDefinition(backgroundVectorDefinition)
+            backgroundVectors: cloneBackgroundVectorDefinition(backgroundVectorDefinition),
+            canvasSize: {
+                width: Math.max(1, Math.round(canvasSize.width)),
+                height: Math.max(1, Math.round(canvasSize.height))
+            }
         }
     };
 

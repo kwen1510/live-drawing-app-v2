@@ -1,5 +1,4 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.4/+esm';
-import { calculateOverlayPlacement } from './utils/layout.mjs';
 
 const statusBadge = document.getElementById('sessionStatusBadge');
 const connectionStatus = document.getElementById('connection-status');
@@ -165,12 +164,13 @@ let modePreviewImages = [];
 let isModeModalOpen = false;
 let modeModalReturnFocus = null;
 let studentModalResizeObserver = null;
+let teacherOverlayResizeObserver = null;
 let teacherOverlayCtx = teacherOverlayCanvas ? teacherOverlayCanvas.getContext('2d') : null;
 let teacherPenActive = false;
 let teacherPenStudent = null;
 let teacherPenDrawing = false;
 let teacherPenCurrentPath = null;
-let teacherPenColour = '#111827';
+let teacherPenColour = '#7c3aed';
 let teacherEraserAction = null;
 const TEACHER_TOOL_TYPES = Object.freeze({
     PEN: 'pen',
@@ -183,6 +183,7 @@ const TEACHER_MAX_STROKE_WIDTH = TEACHER_MAX_BRUSH_SIZE;
 const TEACHER_BRUSH_STORAGE_KEY = 'teacher-brush-size';
 const TEACHER_STYLUS_STORAGE_KEY = 'teacher-stylus-only';
 const TEACHER_ERASER_HITBOX_PADDING = 6;
+const TEACHER_ANNOTATION_FLUSH_DELAY = 32;
 let teacherActiveTool = TEACHER_TOOL_TYPES.PEN;
 let teacherBrushSize = readTeacherBrushSize();
 let teacherStylusOnly = readTeacherStylusPreference();
@@ -1054,8 +1055,6 @@ function ensureStudentCard(username) {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const scaleRatio = canvas.width / 800;
-    ctx.scale(scaleRatio, scaleRatio);
 
     const student = {
         username,
@@ -1068,6 +1067,8 @@ function ensureStudentCard(username) {
         backgroundImageData: null,
         backgroundImageElement: null,
         backgroundVectors: null,
+        canvasWidth: BASE_CANVAS_WIDTH,
+        canvasHeight: BASE_CANVAS_HEIGHT,
         paths: [],
         previewCanvas: null,
         previewCtx: null,
@@ -1110,6 +1111,18 @@ function updateStudentCanvas(username, canvasState) {
     student.paths = Array.isArray(canvasState.paths) ? canvasState.paths : [];
     student.backgroundVectors = normaliseBackgroundVectorDefinition(canvasState.backgroundVectors);
 
+    const size = canvasState.canvasSize || {};
+    const width = Number(size.width);
+    const height = Number(size.height);
+    let sizeChanged = false;
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+        if (student.canvasWidth !== width || student.canvasHeight !== height) {
+            student.canvasWidth = width;
+            student.canvasHeight = height;
+            sizeChanged = true;
+        }
+    }
+
     const markSynced = () => {
         setStudentSyncState(username, true);
         if (activeModalStudent === username) {
@@ -1151,6 +1164,10 @@ function updateStudentCanvas(username, canvasState) {
     }
 
     drawStudentCanvas(student);
+    if (sizeChanged && activeModalStudent === username) {
+        resizeStudentModalCanvas();
+        requestAnimationFrame(alignTeacherOverlayCanvas);
+    }
     markSynced();
 }
 
@@ -1158,8 +1175,6 @@ function resetCanvas(ctx, canvas) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const scaleRatio = canvas.width / BASE_CANVAS_WIDTH;
-    ctx.scale(scaleRatio, scaleRatio);
 }
 
 function updateStudentActivity(username) {
@@ -1287,13 +1302,21 @@ function setupStudentModal() {
         }
     });
 
-    if (typeof ResizeObserver === 'function' && !studentModalResizeObserver) {
+    if (typeof ResizeObserver === 'function') {
         const wrapper = studentModalCanvas.parentElement;
-        if (wrapper) {
+        if (wrapper && !studentModalResizeObserver) {
             studentModalResizeObserver = new ResizeObserver(() => {
                 resizeStudentModalCanvas();
             });
             studentModalResizeObserver.observe(wrapper);
+        }
+
+        const overlayContainer = teacherOverlayCanvas?.parentElement;
+        if (overlayContainer && !teacherOverlayResizeObserver) {
+            teacherOverlayResizeObserver = new ResizeObserver(() => {
+                alignTeacherOverlayCanvas();
+            });
+            teacherOverlayResizeObserver.observe(overlayContainer);
         }
     }
 
@@ -1508,8 +1531,20 @@ function getTeacherOverlayPoint(event) {
 
     const scaleX = teacherOverlayCanvas.width / rect.width;
     const scaleY = teacherOverlayCanvas.height / rect.height;
-    const x = (event.clientX - rect.left) * scaleX;
-    const y = (event.clientY - rect.top) * scaleY;
+    const rawX = (event.clientX - rect.left) * scaleX;
+    const rawY = (event.clientY - rect.top) * scaleY;
+
+    if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) {
+        return null;
+    }
+
+    const baseWidth = BASE_CANVAS_WIDTH || teacherOverlayCanvas.width;
+    const baseHeight = BASE_CANVAS_HEIGHT || teacherOverlayCanvas.height;
+    const widthScale = teacherOverlayCanvas.width ? baseWidth / teacherOverlayCanvas.width : 1;
+    const heightScale = teacherOverlayCanvas.height ? baseHeight / teacherOverlayCanvas.height : 1;
+
+    const x = rawX * widthScale;
+    const y = rawY * heightScale;
 
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
         return null;
@@ -2075,6 +2110,8 @@ function renderTeacherAnnotations() {
         return;
     }
 
+    alignTeacherOverlayCanvas();
+
     resetTeacherStrokeDrawState();
     teacherOverlayCtx.setTransform(1, 0, 0, 1, 0, 0);
     teacherOverlayCtx.clearRect(0, 0, teacherOverlayCanvas.width, teacherOverlayCanvas.height);
@@ -2122,7 +2159,7 @@ function queueTeacherAnnotationBroadcast(reason = 'update', immediate = false) {
         if (target) {
             sendTeacherAnnotationsToStudent(target, sendReason);
         }
-    }, 80);
+    }, TEACHER_ANNOTATION_FLUSH_DELAY);
 }
 
 function flushTeacherAnnotationBroadcast(reason = 'update') {
@@ -2683,8 +2720,8 @@ function openStudentModal(username, triggerElement) {
     activeModalStudent = username;
     modalReturnFocus = triggerElement || null;
 
-    studentModalCanvas.width = 1024;
-    studentModalCanvas.height = 768;
+    studentModalCanvas.width = BASE_CANVAS_WIDTH;
+    studentModalCanvas.height = BASE_CANVAS_HEIGHT;
     student.previewCanvas = studentModalCanvas;
     student.previewCtx = studentModalCanvas.getContext('2d');
 
@@ -2705,6 +2742,7 @@ function openStudentModal(username, triggerElement) {
     resizeStudentModalCanvas();
     window.addEventListener('resize', resizeStudentModalCanvas);
     requestAnimationFrame(resizeStudentModalCanvas);
+    requestAnimationFrame(alignTeacherOverlayCanvas);
 
     if (studentModalClose) {
         studentModalClose.focus();
@@ -2768,9 +2806,12 @@ function resizeStudentModalCanvas() {
         return;
     }
 
+    const student = activeModalStudent ? students.get(activeModalStudent) : null;
+    const { width: displayWidth, height: displayHeight } = getStudentDisplaySize(student);
+
     const { drawWidth, drawHeight } = calculateContainDimensions(
-        BASE_CANVAS_WIDTH,
-        BASE_CANVAS_HEIGHT,
+        displayWidth,
+        displayHeight,
         availableWidth,
         availableHeight
     );
@@ -2778,24 +2819,37 @@ function resizeStudentModalCanvas() {
     studentModalCanvas.style.width = `${drawWidth}px`;
     studentModalCanvas.style.height = `${drawHeight}px`;
 
-    if (teacherOverlayCanvas) {
-        const { width: overlayWidth, height: overlayHeight, left, top } = calculateOverlayPlacement({
-            containerWidth: width,
-            containerHeight: height,
-            paddingLeft,
-            paddingRight,
-            paddingTop,
-            paddingBottom,
-            drawWidth,
-            drawHeight
-        });
+    alignTeacherOverlayCanvas();
+    requestAnimationFrame(alignTeacherOverlayCanvas);
+}
 
-        teacherOverlayCanvas.style.width = `${overlayWidth}px`;
-        teacherOverlayCanvas.style.height = `${overlayHeight}px`;
-        teacherOverlayCanvas.style.left = `${left}px`;
-        teacherOverlayCanvas.style.top = `${top}px`;
+function alignTeacherOverlayCanvas() {
+    if (!teacherOverlayCanvas || !studentModalCanvas) {
+        return;
     }
 
+    const container = teacherOverlayCanvas.parentElement;
+    if (!container) {
+        return;
+    }
+
+    const canvasRect = studentModalCanvas.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+
+    if (!canvasRect.width || !canvasRect.height) {
+        return;
+    }
+
+    const scrollLeft = container.scrollLeft || 0;
+    const scrollTop = container.scrollTop || 0;
+
+    const left = canvasRect.left - containerRect.left + scrollLeft;
+    const top = canvasRect.top - containerRect.top + scrollTop;
+
+    teacherOverlayCanvas.style.width = `${canvasRect.width}px`;
+    teacherOverlayCanvas.style.height = `${canvasRect.height}px`;
+    teacherOverlayCanvas.style.left = `${left}px`;
+    teacherOverlayCanvas.style.top = `${top}px`;
 }
 
 function updateStudentModalMeta(student) {
@@ -3398,8 +3452,14 @@ function applyDrawBatch(student, batch) {
         return;
     }
 
-    targets.forEach(({ ctx }) => {
+    targets.forEach(({ ctx, canvas }) => {
+        if (!ctx || !canvas) {
+            return;
+        }
+        ctx.save();
+        applyStudentCanvasTransform(ctx, canvas, student);
         drawBatchToContext(ctx, batch);
+        ctx.restore();
     });
 }
 
@@ -3468,6 +3528,55 @@ function drawBatchToContext(ctx, batch) {
     });
 }
 
+function getStudentDisplaySize(student) {
+    if (!student) {
+        return { width: BASE_CANVAS_WIDTH, height: BASE_CANVAS_HEIGHT };
+    }
+
+    const width = Number(student.canvasWidth);
+    const height = Number(student.canvasHeight);
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+        return { width, height };
+    }
+
+    const vectorWidth = Number(student.backgroundVectors?.width);
+    const vectorHeight = Number(student.backgroundVectors?.height);
+    if (Number.isFinite(vectorWidth) && Number.isFinite(vectorHeight) && vectorWidth > 0 && vectorHeight > 0) {
+        return { width: vectorWidth, height: vectorHeight };
+    }
+
+    const imageWidth = Number(student.backgroundImageElement?.naturalWidth || student.backgroundImageElement?.width);
+    const imageHeight = Number(student.backgroundImageElement?.naturalHeight || student.backgroundImageElement?.height);
+    if (Number.isFinite(imageWidth) && Number.isFinite(imageHeight) && imageWidth > 0 && imageHeight > 0) {
+        return { width: imageWidth, height: imageHeight };
+    }
+
+    return { width: BASE_CANVAS_WIDTH, height: BASE_CANVAS_HEIGHT };
+}
+
+function applyStudentCanvasTransform(ctx, canvas, student) {
+    if (!ctx || !canvas) {
+        return;
+    }
+
+    const { width, height } = getStudentDisplaySize(student);
+    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
+        width,
+        height,
+        canvas.width,
+        canvas.height
+    );
+
+    if (!drawWidth || !drawHeight) {
+        return;
+    }
+
+    const scaleX = drawWidth / BASE_CANVAS_WIDTH;
+    const scaleY = drawHeight / BASE_CANVAS_HEIGHT;
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scaleX, scaleY);
+}
+
 function drawStudentCanvas(student) {
     const targets = getStudentTargets(student);
     if (targets.length === 0) {
@@ -3477,11 +3586,14 @@ function drawStudentCanvas(student) {
     const render = () => {
         targets.forEach(({ ctx, canvas }) => {
             resetCanvas(ctx, canvas);
+            ctx.save();
+            applyStudentCanvasTransform(ctx, canvas, student);
             drawStudentBackground(ctx, student.backgroundImageElement, student.backgroundVectors);
             renderStudentPaths(ctx, student.paths);
             if (ctx !== student.previewCtx) {
                 renderTeacherOverlay(ctx, student.teacherAnnotations);
             }
+            ctx.restore();
         });
     };
 
@@ -3492,13 +3604,23 @@ function drawStudentCanvas(student) {
             student.backgroundImageElement.onload = null;
             student.backgroundImageElement.onerror = null;
             render();
+            if (student.username === activeModalStudent) {
+                requestAnimationFrame(alignTeacherOverlayCanvas);
+            }
         };
         student.backgroundImageElement.onerror = () => {
             student.backgroundImageElement.onload = null;
             student.backgroundImageElement.onerror = null;
             student.backgroundImageElement = null;
             render();
+            if (student.username === activeModalStudent) {
+                requestAnimationFrame(alignTeacherOverlayCanvas);
+            }
         };
+    }
+
+    if (student.username === activeModalStudent) {
+        requestAnimationFrame(alignTeacherOverlayCanvas);
     }
 }
 
@@ -3843,8 +3965,8 @@ function resetTeacherAnnotationStream(streamState) {
     }
 
     streamState.order = [];
-    streamState.width = teacherOverlayCanvas?.width || BASE_CANVAS_WIDTH;
-    streamState.height = teacherOverlayCanvas?.height || BASE_CANVAS_HEIGHT;
+    streamState.width = BASE_CANVAS_WIDTH || teacherOverlayCanvas?.width || 1;
+    streamState.height = BASE_CANVAS_HEIGHT || teacherOverlayCanvas?.height || 1;
 }
 
 function updateTeacherAnnotationStreamSnapshot(streamState, annotations) {
@@ -3880,8 +4002,8 @@ function updateTeacherAnnotationStreamSnapshot(streamState, annotations) {
 
     streamState.paths = map;
     streamState.order = order;
-    streamState.width = teacherOverlayCanvas?.width || BASE_CANVAS_WIDTH;
-    streamState.height = teacherOverlayCanvas?.height || BASE_CANVAS_HEIGHT;
+    streamState.width = BASE_CANVAS_WIDTH || teacherOverlayCanvas?.width || 1;
+    streamState.height = BASE_CANVAS_HEIGHT || teacherOverlayCanvas?.height || 1;
 }
 
 function serialiseTeacherPoints(points) {
@@ -3889,8 +4011,8 @@ function serialiseTeacherPoints(points) {
         return [];
     }
 
-    const width = teacherOverlayCanvas?.width || BASE_CANVAS_WIDTH;
-    const height = teacherOverlayCanvas?.height || BASE_CANVAS_HEIGHT;
+    const width = BASE_CANVAS_WIDTH || teacherOverlayCanvas?.width || 1;
+    const height = BASE_CANVAS_HEIGHT || teacherOverlayCanvas?.height || 1;
 
     return points.map((point) => {
         const x = typeof point?.x === 'number' ? point.x : Array.isArray(point) ? Number(point[0]) : 0;
