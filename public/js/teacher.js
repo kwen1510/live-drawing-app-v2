@@ -3031,12 +3031,18 @@ function updateReferencePreview(imageData, altText = 'Selected reference preview
         referencePreviewImage.removeAttribute('src');
         referencePreviewImage.alt = '';
         referencePreviewImage.hidden = true;
+        if (referencePreview) {
+            referencePreview.classList.remove('has-image');
+        }
         if (referencePreviewPlaceholder) {
             referencePreviewPlaceholder.hidden = false;
         }
         return;
     }
 
+    if (referencePreview) {
+        referencePreview.classList.add('has-image');
+    }
     referencePreviewImage.hidden = false;
     referencePreviewImage.src = imageData;
     referencePreviewImage.alt = altText;
