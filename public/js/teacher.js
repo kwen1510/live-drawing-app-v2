@@ -170,7 +170,7 @@ let teacherPenActive = false;
 let teacherPenStudent = null;
 let teacherPenDrawing = false;
 let teacherPenCurrentPath = null;
-let teacherPenColour = '#ef4444';
+let teacherPenColour = '#111827';
 let teacherEraserAction = null;
 const TEACHER_TOOL_TYPES = Object.freeze({
     PEN: 'pen',
@@ -189,6 +189,12 @@ let teacherStylusOnly = readTeacherStylusPreference();
 let teacherPenControlsReady = false;
 let teacherBrushPopoverOpen = false;
 let teacherBrushPopoverReturnFocus = null;
+const teacherStrokeDrawState = {
+    buffer: [],
+    history: [],
+    rafId: null,
+    stroke: null
+};
 const presenceKey = `teacher-${Math.random().toString(36).slice(2, 10)}`;
 const students = new Map();
 const GRID_STORAGE_KEY = 'teacher-grid-columns';
@@ -1303,7 +1309,7 @@ function setupTeacherPenControls() {
         return;
     }
 
-    teacherOverlayCtx = teacherOverlayCanvas.getContext('2d');
+    teacherOverlayCtx = teacherOverlayCanvas.getContext('2d', { alpha: true, desynchronized: true });
     if (!teacherOverlayCtx) {
         return;
     }
@@ -1311,11 +1317,14 @@ function setupTeacherPenControls() {
     teacherOverlayCanvas.width = BASE_CANVAS_WIDTH;
     teacherOverlayCanvas.height = BASE_CANVAS_HEIGHT;
 
-    teacherOverlayCanvas.addEventListener('pointerdown', handleTeacherPenPointerDown);
-    teacherOverlayCanvas.addEventListener('pointermove', handleTeacherPenPointerMove);
-    teacherOverlayCanvas.addEventListener('pointerup', handleTeacherPenPointerUp);
-    teacherOverlayCanvas.addEventListener('pointerleave', handleTeacherPenPointerUp);
-    teacherOverlayCanvas.addEventListener('pointercancel', handleTeacherPenPointerUp);
+    teacherOverlayCanvas.style.touchAction = 'none';
+
+    const pointerListenerOptions = { passive: false };
+    teacherOverlayCanvas.addEventListener('pointerdown', handleTeacherPenPointerDown, pointerListenerOptions);
+    teacherOverlayCanvas.addEventListener('pointermove', handleTeacherPenPointerMove, pointerListenerOptions);
+    teacherOverlayCanvas.addEventListener('pointerup', handleTeacherPenPointerUp, pointerListenerOptions);
+    teacherOverlayCanvas.addEventListener('pointerleave', handleTeacherPenPointerUp, pointerListenerOptions);
+    teacherOverlayCanvas.addEventListener('pointercancel', handleTeacherPenPointerUp, pointerListenerOptions);
     teacherOverlayCanvas.addEventListener('lostpointercapture', handleTeacherPenPointerUp);
 
     teacherPenToggle.addEventListener('click', () => {
@@ -1426,6 +1435,7 @@ function setTeacherPenActive(active) {
         teacherPenCurrentPath = null;
         completeTeacherEraserAction({ cancel: true });
         closeTeacherBrushPopover();
+        resetTeacherStrokeDrawState();
     }
 
     if (teacherOverlayCanvas) {
@@ -2063,6 +2073,7 @@ function renderTeacherAnnotations() {
         return;
     }
 
+    resetTeacherStrokeDrawState();
     teacherOverlayCtx.setTransform(1, 0, 0, 1, 0, 0);
     teacherOverlayCtx.clearRect(0, 0, teacherOverlayCanvas.width, teacherOverlayCanvas.height);
 
@@ -2241,6 +2252,126 @@ function detachTeacherPenFromStudent() {
     updateTeacherPenUi();
 }
 
+function beginTeacherStrokeDraw(stroke) {
+    teacherStrokeDrawState.stroke = stroke || null;
+    teacherStrokeDrawState.buffer = [];
+    teacherStrokeDrawState.history = [];
+    if (teacherStrokeDrawState.rafId !== null) {
+        cancelAnimationFrame(teacherStrokeDrawState.rafId);
+        teacherStrokeDrawState.rafId = null;
+    }
+}
+
+function addTeacherStrokePointForDrawing(point) {
+    if (!teacherStrokeDrawState.stroke) {
+        return;
+    }
+
+    teacherStrokeDrawState.buffer.push(point);
+    teacherStrokeDrawState.history.push(point);
+    queueTeacherStrokeDraw();
+}
+
+function queueTeacherStrokeDraw(flush = false) {
+    if (flush) {
+        if (teacherStrokeDrawState.rafId !== null) {
+            cancelAnimationFrame(teacherStrokeDrawState.rafId);
+            teacherStrokeDrawState.rafId = null;
+        }
+        drawTeacherStroke(true);
+        return;
+    }
+
+    if (teacherStrokeDrawState.rafId !== null) {
+        return;
+    }
+
+    teacherStrokeDrawState.rafId = requestAnimationFrame(() => {
+        teacherStrokeDrawState.rafId = null;
+        drawTeacherStroke();
+    });
+}
+
+function drawTeacherStroke(flush = false) {
+    if (!teacherOverlayCtx || !teacherStrokeDrawState.stroke) {
+        teacherStrokeDrawState.buffer = [];
+        return;
+    }
+
+    const points = teacherStrokeDrawState.buffer;
+    if (!Array.isArray(points) || points.length === 0) {
+        teacherStrokeDrawState.buffer = [];
+        return;
+    }
+
+    const stroke = teacherStrokeDrawState.stroke;
+    const baseWidth = typeof stroke.width === 'number' && stroke.width > 0
+        ? stroke.width
+        : TEACHER_MIN_BRUSH_SIZE;
+    const strokeColor = stroke.erase ? '#000000' : (stroke.color || teacherPenColour);
+    const opacity = typeof stroke.opacity === 'number' && Number.isFinite(stroke.opacity)
+        ? clampNumber(stroke.opacity, 0.05, 1)
+        : 1;
+
+    teacherOverlayCtx.save();
+    teacherOverlayCtx.globalCompositeOperation = stroke.erase
+        ? 'destination-out'
+        : (stroke.composite || 'source-over');
+    teacherOverlayCtx.globalAlpha = opacity;
+    teacherOverlayCtx.strokeStyle = strokeColor;
+    teacherOverlayCtx.lineCap = 'round';
+    teacherOverlayCtx.lineJoin = 'round';
+
+    if (points.length === 1) {
+        drawTeacherDot(teacherOverlayCtx, points[0], stroke, baseWidth);
+        teacherOverlayCtx.restore();
+        teacherStrokeDrawState.buffer = flush ? [] : points.slice(-1);
+        return;
+    }
+
+    teacherOverlayCtx.beginPath();
+    let previous = points[0];
+    teacherOverlayCtx.moveTo(previous.x, previous.y);
+
+    for (let i = 1; i < points.length; i += 1) {
+        const current = points[i];
+        const midpoint = getStudentMidpoint(previous, current);
+        teacherOverlayCtx.lineWidth = baseWidth;
+        teacherOverlayCtx.quadraticCurveTo(previous.x, previous.y, midpoint.x, midpoint.y);
+        teacherOverlayCtx.stroke();
+        previous = current;
+    }
+
+    teacherOverlayCtx.restore();
+    teacherStrokeDrawState.buffer = flush ? [] : points.slice(-2);
+    if (flush) {
+        teacherStrokeDrawState.history = [];
+    }
+}
+
+function drawTeacherDot(ctx, point, stroke, baseWidth) {
+    if (!ctx || !point) {
+        return;
+    }
+
+    const radius = Math.max(baseWidth * 0.5, baseWidth * 0.35, 0.6);
+
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = stroke.erase ? '#000000' : (stroke.color || teacherPenColour);
+    ctx.fill();
+}
+
+function resetTeacherStrokeDrawState() {
+    if (teacherStrokeDrawState.rafId !== null) {
+        cancelAnimationFrame(teacherStrokeDrawState.rafId);
+        teacherStrokeDrawState.rafId = null;
+    }
+    teacherStrokeDrawState.buffer = [];
+    teacherStrokeDrawState.history = [];
+    teacherStrokeDrawState.stroke = null;
+}
+
 function handleTeacherPenPointerDown(event) {
     if (!teacherPenActive || !teacherPenStudent || !teacherOverlayCanvas) {
         return;
@@ -2285,6 +2416,7 @@ function handleTeacherPenPointerDown(event) {
     student.teacherAnnotations.push(path);
     recordTeacherHistory(student, { type: 'draw', path, index: student.teacherAnnotations.length - 1 });
     teacherPenCurrentPath = path;
+    beginTeacherStrokeDraw(path);
     teacherPenDrawing = true;
 
     addTeacherPenPoint(event);
@@ -2349,6 +2481,7 @@ function handleTeacherPenPointerUp(event) {
 
     completeTeacherEraserAction({ cancel: true });
     addTeacherPenPoint(event);
+    queueTeacherStrokeDraw(true);
 
     const completedPath = teacherPenCurrentPath;
 
@@ -2363,8 +2496,10 @@ function handleTeacherPenPointerUp(event) {
         if (Array.isArray(student.teacherHistory) && student.teacherHistory.length > 0) {
             student.teacherHistory.pop();
         }
-        renderTeacherAnnotations();
     }
+
+    renderTeacherAnnotations();
+    resetTeacherStrokeDrawState();
 
     if (teacherOverlayCanvas && typeof event.pointerId === 'number') {
         try {
@@ -2389,12 +2524,12 @@ function addTeacherPenPoint(event) {
     }
 
     teacherPenCurrentPath.points.push({ x: point.x, y: point.y, p: 1 });
+    addTeacherStrokePointForDrawing({ x: point.x, y: point.y });
+
     if (teacherPenStudent) {
         markStudentReviewed(teacherPenStudent);
     }
 
-    renderTeacherAnnotations();
-    updateTeacherPenUi();
     queueTeacherAnnotationBroadcast('update');
 }
 
