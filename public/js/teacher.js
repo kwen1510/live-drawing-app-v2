@@ -1698,7 +1698,8 @@ function updateTeacherPenUi() {
     });
 
     if (teacherBrushButton) {
-        teacherBrushButton.disabled = !hasStudent || controlsLocked;
+        teacherBrushButton.disabled = controlsLocked;
+        teacherBrushButton.classList.toggle('is-disabled', !hasStudent);
         teacherBrushButton.setAttribute('aria-expanded', teacherBrushPopoverOpen ? 'true' : 'false');
     }
 
@@ -1797,12 +1798,17 @@ function toggleTeacherBrushPopover() {
 }
 
 function openTeacherBrushPopover() {
-    if (!teacherBrushPopover || !teacherBrushButton || !teacherPenStudent) {
+    if (!teacherBrushPopover || !teacherBrushButton) {
+        return;
+    }
+
+    if (teacherBrushPopoverOpen) {
+        updateTeacherBrushUi({ updateSlider: true });
         return;
     }
 
     teacherBrushPopoverOpen = true;
-    teacherBrushPopover.hidden = false;
+    teacherBrushPopover.removeAttribute('hidden');
     teacherBrushPopover.classList.remove('hidden');
     teacherBrushPopover.classList.remove('is-visible');
     teacherBrushPopover.dataset.placement = '';
@@ -1832,9 +1838,9 @@ function closeTeacherBrushPopover() {
     teacherBrushPopoverOpen = false;
     teacherBrushPopover.classList.remove('is-visible');
     stopTeacherBrushPopoverPositioning();
-    teacherBrushPopover.hidden = true;
+    teacherBrushPopover.setAttribute('hidden', '');
     teacherBrushPopover.classList.add('hidden');
-    teacherBrushPopover.style.visibility = '';
+    teacherBrushPopover.style.visibility = 'hidden';
 
     if (teacherBrushButton) {
         teacherBrushButton.setAttribute('aria-expanded', 'false');
@@ -3936,6 +3942,24 @@ function drawStudentCanvas(student) {
 
     render();
 
+    const hasStudentContent = Array.isArray(student?.paths) && student.paths.length > 0;
+    const hasPendingContent = Array.isArray(student?.pendingSegments) && student.pendingSegments.length > 0;
+    const hasTeacherContent = Array.isArray(student?.teacherAnnotations) && student.teacherAnnotations.length > 0;
+    const hasBackgroundImage = Boolean(student?.backgroundImageElement);
+    const hasBackgroundVectors = student?.backgroundVectors && typeof student.backgroundVectors === 'object'
+        ? Object.keys(student.backgroundVectors).length > 0
+        : false;
+
+    if (
+        !hasStudentContent
+        && !hasPendingContent
+        && !hasTeacherContent
+        && !hasBackgroundImage
+        && !hasBackgroundVectors
+    ) {
+        copyStudentCardToPreview(student);
+    }
+
     if (student.backgroundImageElement && !student.backgroundImageElement.complete) {
         student.backgroundImageElement.onload = () => {
             student.backgroundImageElement.onload = null;
@@ -3958,6 +3982,60 @@ function drawStudentCanvas(student) {
 
     if (student.username === activeModalStudent) {
         requestAnimationFrame(alignTeacherOverlayCanvas);
+    }
+}
+
+function copyStudentCardToPreview(student) {
+    if (!student || student.canvas === student.previewCanvas) {
+        return;
+    }
+
+    const previewCanvas = student.previewCanvas;
+    const previewCtx = student.previewCtx;
+    const sourceCanvas = student.canvas;
+
+    if (!previewCanvas || !previewCtx || !sourceCanvas) {
+        return;
+    }
+
+    const sourceWidth = Number(sourceCanvas.width);
+    const sourceHeight = Number(sourceCanvas.height);
+
+    if (!Number.isFinite(sourceWidth) || !Number.isFinite(sourceHeight) || sourceWidth <= 0 || sourceHeight <= 0) {
+        return;
+    }
+
+    resetCanvas(previewCtx, previewCanvas);
+
+    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
+        sourceWidth,
+        sourceHeight,
+        previewCanvas.width,
+        previewCanvas.height
+    );
+
+    if (!drawWidth || !drawHeight) {
+        return;
+    }
+
+    previewCtx.save();
+    try {
+        previewCtx.translate(offsetX, offsetY);
+        previewCtx.drawImage(
+            sourceCanvas,
+            0,
+            0,
+            sourceCanvas.width,
+            sourceCanvas.height,
+            0,
+            0,
+            drawWidth,
+            drawHeight
+        );
+    } catch (error) {
+        console.error('Failed to copy student preview canvas', error);
+    } finally {
+        previewCtx.restore();
     }
 }
 
