@@ -2959,118 +2959,144 @@ function closeStudentModal() {
     modalReturnFocus = null;
 }
 
-function resizeStudentModalCanvas() {
+function measureStudentModalLayout() {
     if (!studentModalCanvas) {
-        return;
+        return null;
     }
 
     const container = studentModalCanvas.parentElement;
     if (!container) {
-        return;
+        return null;
     }
 
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-    if (!width || !height) {
-        return;
-    }
-
+    const containerWidth = container.clientWidth || 0;
+    const containerHeight = container.clientHeight || 0;
     const styles = window.getComputedStyle(container);
+
     const paddingLeft = parseFloat(styles.paddingLeft || '0');
     const paddingRight = parseFloat(styles.paddingRight || '0');
     const paddingTop = parseFloat(styles.paddingTop || '0');
     const paddingBottom = parseFloat(styles.paddingBottom || '0');
 
-    const availableWidth = Math.max(0, width - paddingLeft - paddingRight);
-    const availableHeight = Math.max(0, height - paddingTop - paddingBottom);
-    if (!availableWidth || !availableHeight) {
-        return;
+    const innerWidth = Math.max(0, containerWidth - paddingLeft - paddingRight);
+    const innerHeight = Math.max(0, containerHeight - paddingTop - paddingBottom);
+
+    if (!innerWidth || !innerHeight) {
+        return {
+            container,
+            containerWidth,
+            containerHeight,
+            paddingLeft,
+            paddingRight,
+            paddingTop,
+            paddingBottom,
+            innerWidth,
+            innerHeight,
+            drawWidth: 0,
+            drawHeight: 0,
+            offsetX: 0,
+            offsetY: 0
+        };
     }
 
     const student = activeModalStudent ? students.get(activeModalStudent) : null;
     const { width: displayWidth, height: displayHeight } = getStudentDisplaySize(student);
 
-    const { drawWidth, drawHeight } = calculateContainDimensions(
+    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
         displayWidth,
         displayHeight,
-        availableWidth,
-        availableHeight
+        innerWidth,
+        innerHeight
     );
 
-    const roundedWidth = Math.max(0, Math.round(drawWidth));
-    const roundedHeight = Math.max(0, Math.round(drawHeight));
-
-    studentModalCanvas.style.width = `${roundedWidth}px`;
-    studentModalCanvas.style.height = `${roundedHeight}px`;
-
-    alignTeacherOverlayCanvas();
-    requestAnimationFrame(alignTeacherOverlayCanvas);
-}
-
-function alignTeacherOverlayCanvas() {
-    if (!teacherOverlayCanvas || !studentModalCanvas) {
-        return;
-    }
-
-    const container = teacherOverlayCanvas.parentElement;
-    if (!container) {
-        return;
-    }
-
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
-    if (!containerWidth || !containerHeight) {
-        return;
-    }
-
-    const canvasRect = studentModalCanvas.getBoundingClientRect();
-    const clientWidth = Math.max(0, studentModalCanvas.clientWidth || 0);
-    const clientHeight = Math.max(0, studentModalCanvas.clientHeight || 0);
-
-    const drawWidth = clientWidth || canvasRect.width;
-    const drawHeight = clientHeight || canvasRect.height;
-
-    if (!drawWidth || !drawHeight) {
-        return;
-    }
-
-    const styles = window.getComputedStyle(container);
-    const paddingLeft = parseFloat(styles.paddingLeft || '0');
-    const paddingRight = parseFloat(styles.paddingRight || '0');
-    const paddingTop = parseFloat(styles.paddingTop || '0');
-    const paddingBottom = parseFloat(styles.paddingBottom || '0');
-
-    const placement = calculateOverlayPlacement({
+    return {
+        container,
         containerWidth,
         containerHeight,
         paddingLeft,
         paddingRight,
         paddingTop,
         paddingBottom,
+        innerWidth,
+        innerHeight,
         drawWidth,
-        drawHeight
-    });
+        drawHeight,
+        offsetX,
+        offsetY
+    };
+}
 
-    if (!placement.width || !placement.height) {
+function resizeStudentModalCanvas() {
+    if (!studentModalCanvas) {
         return;
     }
 
-    const scrollLeft = container.scrollLeft || 0;
-    const scrollTop = container.scrollTop || 0;
+    const measurements = measureStudentModalLayout();
+    if (!measurements) {
+        return;
+    }
 
-    const width = Math.max(0, Math.round(placement.width));
-    const height = Math.max(0, Math.round(placement.height));
-    const leftOffset = Number.isFinite(studentModalCanvas.offsetLeft)
-        ? studentModalCanvas.offsetLeft
-        : placement.left;
-    const topOffset = Number.isFinite(studentModalCanvas.offsetTop)
-        ? studentModalCanvas.offsetTop
-        : placement.top;
+    if (!measurements.drawWidth || !measurements.drawHeight) {
+        studentModalCanvas.style.width = '';
+        studentModalCanvas.style.height = '';
+        if (studentModal && !studentModal.hasAttribute('hidden')) {
+            requestAnimationFrame(resizeStudentModalCanvas);
+        }
+        return;
+    }
+
+    const width = Math.max(0, Math.round(measurements.drawWidth));
+    const height = Math.max(0, Math.round(measurements.drawHeight));
+
+    studentModalCanvas.style.width = `${width}px`;
+    studentModalCanvas.style.height = `${height}px`;
+
+    alignTeacherOverlayCanvas(measurements);
+    requestAnimationFrame(() => alignTeacherOverlayCanvas());
+}
+
+function alignTeacherOverlayCanvas(measurements) {
+    if (!teacherOverlayCanvas || !studentModalCanvas) {
+        return;
+    }
+
+    const layout = measurements || measureStudentModalLayout();
+    if (!layout) {
+        return;
+    }
+
+    if (!layout.drawWidth || !layout.drawHeight) {
+        teacherOverlayCanvas.style.width = '';
+        teacherOverlayCanvas.style.height = '';
+        teacherOverlayCanvas.style.left = '';
+        teacherOverlayCanvas.style.top = '';
+        return;
+    }
+
+    const width = Math.max(0, Math.round(layout.drawWidth));
+    const height = Math.max(0, Math.round(layout.drawHeight));
+
+    const scrollLeft = layout.container?.scrollLeft || 0;
+    const scrollTop = layout.container?.scrollTop || 0;
+
+    const placement = calculateOverlayPlacement({
+        containerWidth: layout.containerWidth,
+        containerHeight: layout.containerHeight,
+        paddingLeft: layout.paddingLeft,
+        paddingRight: layout.paddingRight,
+        paddingTop: layout.paddingTop,
+        paddingBottom: layout.paddingBottom,
+        drawWidth: layout.drawWidth,
+        drawHeight: layout.drawHeight
+    });
+
+    const left = layout.paddingLeft + layout.offsetX;
+    const top = layout.paddingTop + layout.offsetY;
 
     teacherOverlayCanvas.style.width = `${width}px`;
     teacherOverlayCanvas.style.height = `${height}px`;
-    teacherOverlayCanvas.style.left = `${Math.round(leftOffset + scrollLeft)}px`;
-    teacherOverlayCanvas.style.top = `${Math.round(topOffset + scrollTop)}px`;
+    teacherOverlayCanvas.style.left = `${Math.round((Number.isFinite(left) ? left : placement.left) + scrollLeft)}px`;
+    teacherOverlayCanvas.style.top = `${Math.round((Number.isFinite(top) ? top : placement.top) + scrollTop)}px`;
 }
 
 function updateStudentModalMeta(student) {
