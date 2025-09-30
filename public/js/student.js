@@ -140,10 +140,6 @@ let brushPopoverReturnFocus = null;
 
 const BRUSH_POPOVER_OFFSET = 12;
 const BRUSH_POPOVER_MARGIN = 16;
-const brushPopoverPositionState = {
-    rafId: null,
-    active: false
-};
 
 const canvasSize = {
     width: 1,
@@ -421,26 +417,25 @@ function initialiseBrushSizeControls() {
     brushSizeButton.setAttribute('aria-expanded', 'false');
 
     brushSizeButton.addEventListener('click', () => {
-        if (isBrushPopoverOpen) {
-            closeBrushSizePopover();
-        } else {
-            openBrushSizePopover();
+        toggleBrushSizePopover();
+    });
+
+    brushSizeButton.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowDown' && !isBrushPopoverOpen) {
+            event.preventDefault();
+            openBrushSizePopover({ focusSlider: true });
         }
     });
 
-    if (brushSizeSlider) {
-        brushSizeSlider.min = String(MIN_BRUSH_SIZE);
-        brushSizeSlider.max = String(MAX_BRUSH_SIZE_SETTING);
-        brushSizeSlider.step = String(BRUSH_SIZE_STEP);
-        brushSizeSlider.setAttribute('aria-valuemin', formatBrushSizeValue(MIN_BRUSH_SIZE));
-        brushSizeSlider.setAttribute('aria-valuemax', formatBrushSizeValue(MAX_BRUSH_SIZE_SETTING));
-        brushSizeSlider.addEventListener('input', handleBrushSizeInput);
-        brushSizeSlider.addEventListener('change', handleBrushSizeChange);
-    }
+    brushSizeSlider.min = String(MIN_BRUSH_SIZE);
+    brushSizeSlider.max = String(MAX_BRUSH_SIZE_SETTING);
+    brushSizeSlider.step = String(BRUSH_SIZE_STEP);
+    brushSizeSlider.setAttribute('aria-valuemin', formatBrushSizeValue(MIN_BRUSH_SIZE));
+    brushSizeSlider.setAttribute('aria-valuemax', formatBrushSizeValue(MAX_BRUSH_SIZE_SETTING));
+    brushSizeSlider.addEventListener('input', handleBrushSizeInput);
+    brushSizeSlider.addEventListener('change', handleBrushSizeChange);
 
-    if (brushSizePopover) {
-        brushSizePopover.addEventListener('keydown', handleBrushSizePopoverKeydown);
-    }
+    brushSizePopover.addEventListener('keydown', handleBrushSizePopoverKeydown);
 
     document.addEventListener('keydown', handleGlobalBrushSizeKeydown);
 
@@ -493,27 +488,44 @@ function updateStylusModeButton() {
     );
 }
 
-function openBrushSizePopover() {
+let brushPopoverPositionFrame = null;
+
+function toggleBrushSizePopover() {
+    if (isBrushPopoverOpen) {
+        closeBrushSizePopover();
+    } else {
+        openBrushSizePopover({ focusSlider: true });
+    }
+}
+
+function openBrushSizePopover(options = {}) {
     if (!brushSizePopover || !brushSizeButton || isBrushPopoverOpen) {
         return;
     }
 
     isBrushPopoverOpen = true;
     brushPopoverReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
     brushSizePopover.hidden = false;
     brushSizePopover.classList.remove('hidden');
     brushSizePopover.classList.remove('is-visible');
     brushSizePopover.dataset.placement = '';
     brushSizePopover.style.visibility = 'hidden';
+    brushSizePopover.style.position = 'fixed';
+
     brushSizeButton.setAttribute('aria-expanded', 'true');
     document.addEventListener('pointerdown', handleBrushSizeOutsidePointer, true);
-    startBrushSizePopoverPositioning();
+    window.addEventListener('resize', handleBrushSizeViewportChange, true);
+    window.addEventListener('scroll', handleBrushSizeViewportChange, true);
+
+    positionBrushSizePopover({ immediate: true });
     updateBrushSizeUI();
 
     requestAnimationFrame(() => {
         brushSizePopover.classList.add('is-visible');
-        if (brushSizeSlider && typeof brushSizeSlider.focus === 'function') {
-            brushSizeSlider.focus();
+        brushSizePopover.style.visibility = 'visible';
+        if (options.focusSlider && brushSizeSlider && typeof brushSizeSlider.focus === 'function') {
+            brushSizeSlider.focus({ preventScroll: true });
         }
     });
 }
@@ -525,12 +537,17 @@ function closeBrushSizePopover() {
 
     isBrushPopoverOpen = false;
     brushSizePopover.classList.remove('is-visible');
-    stopBrushSizePopoverPositioning();
+    brushSizePopover.style.visibility = '';
+    brushSizePopover.dataset.placement = '';
+    brushSizeButton.setAttribute('aria-expanded', 'false');
+
+    cancelBrushSizePopoverPositioning();
+    document.removeEventListener('pointerdown', handleBrushSizeOutsidePointer, true);
+    window.removeEventListener('resize', handleBrushSizeViewportChange, true);
+    window.removeEventListener('scroll', handleBrushSizeViewportChange, true);
+
     brushSizePopover.hidden = true;
     brushSizePopover.classList.add('hidden');
-    brushSizePopover.style.visibility = '';
-    brushSizeButton.setAttribute('aria-expanded', 'false');
-    document.removeEventListener('pointerdown', handleBrushSizeOutsidePointer, true);
 
     if (brushPopoverReturnFocus && document.contains(brushPopoverReturnFocus)) {
         try {
@@ -539,129 +556,71 @@ function closeBrushSizePopover() {
             // Ignore focus errors
         }
     }
+
     brushPopoverReturnFocus = null;
 }
 
-function startBrushSizePopoverPositioning() {
-    if (!brushSizePopover || !brushSizeButton) {
-        return;
-    }
-
-    if (brushPopoverPositionState.active) {
-        scheduleBrushSizePopoverReposition();
-        return;
-    }
-
-    brushPopoverPositionState.active = true;
-    scheduleBrushSizePopoverReposition();
-    window.addEventListener('resize', scheduleBrushSizePopoverReposition, true);
-    window.addEventListener('scroll', handleBrushSizePopoverScroll, true);
-}
-
-function stopBrushSizePopoverPositioning() {
-    if (!brushPopoverPositionState.active) {
-        return;
-    }
-
-    brushPopoverPositionState.active = false;
-    window.removeEventListener('resize', scheduleBrushSizePopoverReposition, true);
-    window.removeEventListener('scroll', handleBrushSizePopoverScroll, true);
-
-    if (brushPopoverPositionState.rafId !== null) {
-        cancelAnimationFrame(brushPopoverPositionState.rafId);
-        brushPopoverPositionState.rafId = null;
-    }
-
-    if (brushSizePopover) {
-        brushSizePopover.style.left = '';
-        brushSizePopover.style.top = '';
-        brushSizePopover.style.transformOrigin = '';
-        brushSizePopover.style.visibility = '';
-        brushSizePopover.dataset.placement = '';
+function cancelBrushSizePopoverPositioning() {
+    if (brushPopoverPositionFrame !== null) {
+        cancelAnimationFrame(brushPopoverPositionFrame);
+        brushPopoverPositionFrame = null;
     }
 }
 
-function scheduleBrushSizePopoverReposition() {
+function handleBrushSizeViewportChange() {
     if (!isBrushPopoverOpen) {
         return;
     }
-
-    if (brushPopoverPositionState.rafId !== null) {
-        cancelAnimationFrame(brushPopoverPositionState.rafId);
-    }
-
-    brushPopoverPositionState.rafId = requestAnimationFrame(() => {
-        brushPopoverPositionState.rafId = null;
-        applyBrushSizePopoverPosition();
-    });
+    positionBrushSizePopover();
 }
 
-function applyBrushSizePopoverPosition() {
+function positionBrushSizePopover(options = {}) {
     if (!isBrushPopoverOpen || !brushSizePopover || !brushSizeButton) {
         return;
     }
 
-    const buttonRect = brushSizeButton.getBoundingClientRect();
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    const margin = BRUSH_POPOVER_MARGIN;
-    const offset = BRUSH_POPOVER_OFFSET;
+    const applyPosition = () => {
+        brushPopoverPositionFrame = null;
 
-    brushSizePopover.style.position = 'fixed';
-    brushSizePopover.style.visibility = 'hidden';
+        const buttonRect = brushSizeButton.getBoundingClientRect();
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const margin = BRUSH_POPOVER_MARGIN;
+        const offset = BRUSH_POPOVER_OFFSET;
 
-    const rect = brushSizePopover.getBoundingClientRect();
-    const popoverWidth = rect.width || brushSizePopover.offsetWidth;
-    const popoverHeight = rect.height || brushSizePopover.offsetHeight;
+        const rect = brushSizePopover.getBoundingClientRect();
+        const popoverWidth = rect.width || brushSizePopover.offsetWidth;
+        const popoverHeight = rect.height || brushSizePopover.offsetHeight;
 
-    let left = buttonRect.left + (buttonRect.width - popoverWidth) / 2;
-    if (left < margin) {
-        left = margin;
-    }
-    if (left + popoverWidth > viewportWidth - margin) {
-        left = Math.max(margin, viewportWidth - margin - popoverWidth);
-    }
+        let left = buttonRect.left + buttonRect.width / 2 - popoverWidth / 2;
+        left = Math.min(Math.max(margin, left), Math.max(margin, viewportWidth - margin - popoverWidth));
 
-    let top = buttonRect.bottom + offset;
-    let placement = 'bottom';
+        let placement = 'bottom';
+        let top = buttonRect.bottom + offset;
 
-    if (top + popoverHeight > viewportHeight - margin) {
-        const aboveTop = buttonRect.top - offset - popoverHeight;
-        if (aboveTop >= margin) {
-            top = aboveTop;
-            placement = 'top';
-        } else {
-            top = Math.max(margin, viewportHeight - margin - popoverHeight);
+        if (top + popoverHeight > viewportHeight - margin) {
+            const aboveTop = buttonRect.top - offset - popoverHeight;
+            if (aboveTop >= margin) {
+                placement = 'top';
+                top = aboveTop;
+            } else {
+                top = Math.max(margin, viewportHeight - margin - popoverHeight);
+            }
         }
-    }
 
-    brushSizePopover.dataset.placement = placement;
-    brushSizePopover.style.left = `${Math.round(left)}px`;
-    brushSizePopover.style.top = `${Math.round(top)}px`;
-    brushSizePopover.style.transformOrigin = placement === 'top' ? 'bottom center' : 'top center';
-    brushSizePopover.style.visibility = 'visible';
-}
+        brushSizePopover.dataset.placement = placement;
+        brushSizePopover.style.left = `${Math.round(left)}px`;
+        brushSizePopover.style.top = `${Math.round(top)}px`;
+        brushSizePopover.style.transformOrigin = placement === 'top' ? 'bottom center' : 'top center';
+    };
 
-function handleBrushSizePopoverScroll() {
-    if (!isBrushPopoverOpen || !brushSizeButton) {
+    if (options.immediate) {
+        applyPosition();
         return;
     }
 
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    const buttonRect = brushSizeButton.getBoundingClientRect();
-
-    if (
-        buttonRect.bottom < 0
-        || buttonRect.top > viewportHeight
-        || buttonRect.right < 0
-        || buttonRect.left > viewportWidth
-    ) {
-        closeBrushSizePopover();
-        return;
-    }
-
-    scheduleBrushSizePopoverReposition();
+    cancelBrushSizePopoverPositioning();
+    brushPopoverPositionFrame = requestAnimationFrame(applyPosition);
 }
 
 function handleBrushSizeOutsidePointer(event) {
@@ -758,7 +717,7 @@ function updateBrushSizeUI(size) {
     }
 
     if (isBrushPopoverOpen) {
-        scheduleBrushSizePopoverReposition();
+        positionBrushSizePopover();
     }
 }
 
