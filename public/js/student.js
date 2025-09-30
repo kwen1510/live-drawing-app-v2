@@ -506,7 +506,7 @@ function openBrushSizePopover(options = {}) {
     isBrushPopoverOpen = true;
     brushPopoverReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-    brushSizePopover.hidden = false;
+    brushSizePopover.removeAttribute('hidden');
     brushSizePopover.classList.remove('hidden');
     brushSizePopover.classList.remove('is-visible');
     brushSizePopover.dataset.placement = '';
@@ -537,7 +537,7 @@ function closeBrushSizePopover() {
 
     isBrushPopoverOpen = false;
     brushSizePopover.classList.remove('is-visible');
-    brushSizePopover.style.visibility = '';
+    brushSizePopover.style.visibility = 'hidden';
     brushSizePopover.dataset.placement = '';
     brushSizeButton.setAttribute('aria-expanded', 'false');
 
@@ -546,7 +546,7 @@ function closeBrushSizePopover() {
     window.removeEventListener('resize', handleBrushSizeViewportChange, true);
     window.removeEventListener('scroll', handleBrushSizeViewportChange, true);
 
-    brushSizePopover.hidden = true;
+    brushSizePopover.setAttribute('hidden', '');
     brushSizePopover.classList.add('hidden');
 
     if (brushPopoverReturnFocus && document.contains(brushPopoverReturnFocus)) {
