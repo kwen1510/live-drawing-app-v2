@@ -28,7 +28,6 @@ const studentModalSubtitle = document.getElementById('studentModalSubtitle');
 const studentModalClose = document.getElementById('studentModalClose');
 const teacherOverlayCanvas = document.getElementById('teacherOverlayCanvas');
 const teacherToolbar = document.querySelector('.teacher-toolbar');
-const teacherPenToggle = document.getElementById('teacherPenToggle');
 const teacherClearButton = document.getElementById('teacherClearButton');
 const teacherPenSwatches = Array.from(document.querySelectorAll('[data-pen-colour]'));
 const teacherToolButtons = Array.from(document.querySelectorAll('[data-teacher-tool]'));
@@ -1359,12 +1358,6 @@ function setupTeacherPenControls() {
     teacherOverlayCanvas.addEventListener('pointercancel', handleTeacherPenPointerUp, pointerListenerOptions);
     teacherOverlayCanvas.addEventListener('lostpointercapture', handleTeacherPenPointerUp);
 
-    if (teacherPenToggle) {
-        teacherPenToggle.addEventListener('click', () => {
-            setTeacherPenActive(!teacherPenActive);
-        });
-    }
-
     teacherPenSwatches.forEach((swatch) => {
         if (!swatch) {
             return;
@@ -1678,19 +1671,6 @@ function updateTeacherPenUi() {
     const hasAnnotations = annotations.length > 0;
     const canUndo = history.length > 0;
     const hasRedo = redoStack.length > 0;
-
-    if (teacherPenToggle) {
-        teacherPenToggle.disabled = !hasStudent;
-        teacherPenToggle.setAttribute('aria-pressed', String(toggleActive));
-        teacherPenToggle.classList.toggle('is-disabled', !hasStudent);
-        teacherPenToggle.classList.toggle('is-active', toggleActive);
-        teacherPenToggle.classList.toggle('is-prompt', controlsLocked);
-        const toggleLabel = toggleActive ? 'Stop annotating' : 'Start annotating';
-        teacherPenToggle.setAttribute('aria-label', toggleLabel);
-        if (teacherPenToggle.dataset) {
-            teacherPenToggle.dataset.tooltip = toggleLabel;
-        }
-    }
 
     if (teacherToolbar) {
         teacherToolbar.classList.toggle('is-disabled', !hasStudent);
