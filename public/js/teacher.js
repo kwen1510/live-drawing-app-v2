@@ -3044,7 +3044,13 @@ function alignTeacherOverlayCanvas() {
     }
 
     const canvasRect = studentModalCanvas.getBoundingClientRect();
-    if (!canvasRect.width || !canvasRect.height) {
+    const clientWidth = Math.max(0, studentModalCanvas.clientWidth || 0);
+    const clientHeight = Math.max(0, studentModalCanvas.clientHeight || 0);
+
+    const drawWidth = clientWidth || canvasRect.width;
+    const drawHeight = clientHeight || canvasRect.height;
+
+    if (!drawWidth || !drawHeight) {
         return;
     }
 
@@ -3061,8 +3067,8 @@ function alignTeacherOverlayCanvas() {
         paddingRight,
         paddingTop,
         paddingBottom,
-        drawWidth: canvasRect.width,
-        drawHeight: canvasRect.height
+        drawWidth,
+        drawHeight
     });
 
     if (!placement.width || !placement.height) {
@@ -3072,10 +3078,19 @@ function alignTeacherOverlayCanvas() {
     const scrollLeft = container.scrollLeft || 0;
     const scrollTop = container.scrollTop || 0;
 
-    teacherOverlayCanvas.style.width = `${placement.width}px`;
-    teacherOverlayCanvas.style.height = `${placement.height}px`;
-    teacherOverlayCanvas.style.left = `${placement.left + scrollLeft}px`;
-    teacherOverlayCanvas.style.top = `${placement.top + scrollTop}px`;
+    const width = Math.max(0, Math.round(placement.width));
+    const height = Math.max(0, Math.round(placement.height));
+    const leftOffset = Number.isFinite(studentModalCanvas.offsetLeft)
+        ? studentModalCanvas.offsetLeft
+        : placement.left;
+    const topOffset = Number.isFinite(studentModalCanvas.offsetTop)
+        ? studentModalCanvas.offsetTop
+        : placement.top;
+
+    teacherOverlayCanvas.style.width = `${width}px`;
+    teacherOverlayCanvas.style.height = `${height}px`;
+    teacherOverlayCanvas.style.left = `${Math.round(leftOffset + scrollLeft)}px`;
+    teacherOverlayCanvas.style.top = `${Math.round(topOffset + scrollTop)}px`;
 }
 
 function updateStudentModalMeta(student) {
