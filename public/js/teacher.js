@@ -1,6 +1,4 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.4/+esm';
-import { calculateOverlayPlacement } from './utils/layout.mjs';
-
 const statusBadge = document.getElementById('sessionStatusBadge');
 const connectionStatus = document.getElementById('connection-status');
 const studentGrid = document.getElementById('studentGrid');
@@ -163,8 +161,6 @@ let modeOptionButtons = [];
 let modePreviewImages = [];
 let isModeModalOpen = false;
 let modeModalReturnFocus = null;
-let studentModalResizeObserver = null;
-let teacherOverlayResizeObserver = null;
 let teacherOverlayCtx = teacherOverlayCanvas ? teacherOverlayCanvas.getContext('2d') : null;
 let teacherPenActive = false;
 let teacherPenStudent = null;
@@ -1049,8 +1045,8 @@ function ensureStudentCard(username) {
     canvasWrapper.className = 'student-card__canvas';
 
     const canvas = document.createElement('canvas');
-    canvas.width = 520;
-    canvas.height = 390;
+    canvas.width = BASE_CANVAS_WIDTH;
+    canvas.height = BASE_CANVAS_HEIGHT;
     canvasWrapper.appendChild(canvas);
 
     container.appendChild(header);
@@ -1174,7 +1170,7 @@ function updateStudentCanvas(username, canvasState) {
     drawStudentCanvas(student);
     if (sizeChanged && activeModalStudent === username) {
         resizeStudentModalCanvas();
-        requestAnimationFrame(alignTeacherOverlayCanvas);
+        alignTeacherOverlayCanvas();
     }
     markSynced();
 }
@@ -1309,24 +1305,6 @@ function setupStudentModal() {
             closeStudentModal();
         }
     });
-
-    if (typeof ResizeObserver === 'function') {
-        const wrapper = studentModalCanvas.parentElement;
-        if (wrapper && !studentModalResizeObserver) {
-            studentModalResizeObserver = new ResizeObserver(() => {
-                resizeStudentModalCanvas();
-            });
-            studentModalResizeObserver.observe(wrapper);
-        }
-
-        const overlayContainer = teacherOverlayCanvas?.parentElement;
-        if (overlayContainer && !teacherOverlayResizeObserver) {
-            teacherOverlayResizeObserver = new ResizeObserver(() => {
-                alignTeacherOverlayCanvas();
-            });
-            teacherOverlayResizeObserver.observe(overlayContainer);
-        }
-    }
 
     setupTeacherPenControls();
 }
@@ -2876,9 +2854,7 @@ function openStudentModal(username, triggerElement) {
     drawStudentCanvas(student);
 
     resizeStudentModalCanvas();
-    window.addEventListener('resize', resizeStudentModalCanvas);
-    requestAnimationFrame(resizeStudentModalCanvas);
-    requestAnimationFrame(alignTeacherOverlayCanvas);
+    alignTeacherOverlayCanvas();
 
     if (studentModalClose) {
         studentModalClose.focus();
@@ -2903,21 +2879,8 @@ function primeStudentModalCanvas(student) {
         return;
     }
 
-    const { width: displayWidth, height: displayHeight } = getStudentDisplaySize(student);
-    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
-        displayWidth,
-        displayHeight,
-        studentModalCanvas.width,
-        studentModalCanvas.height
-    );
-
-    if (!drawWidth || !drawHeight) {
-        return;
-    }
-
     previewCtx.save();
     try {
-        previewCtx.translate(offsetX, offsetY);
         previewCtx.drawImage(
             sourceCanvas,
             0,
@@ -2926,8 +2889,8 @@ function primeStudentModalCanvas(student) {
             sourceCanvas.height,
             0,
             0,
-            drawWidth,
-            drawHeight
+            studentModalCanvas.width,
+            studentModalCanvas.height
         );
     } catch (error) {
         console.error('Failed to prime student modal canvas', error);
@@ -2955,7 +2918,6 @@ function closeStudentModal() {
     studentModal.setAttribute('hidden', '');
     studentModal.setAttribute('aria-hidden', 'true');
     removeBodyModalLock();
-    window.removeEventListener('resize', resizeStudentModalCanvas);
 
     detachTeacherPenFromStudent();
 
@@ -2965,144 +2927,26 @@ function closeStudentModal() {
     modalReturnFocus = null;
 }
 
-function measureStudentModalLayout() {
-    if (!studentModalCanvas) {
-        return null;
-    }
-
-    const container = studentModalCanvas.parentElement;
-    if (!container) {
-        return null;
-    }
-
-    const containerWidth = container.clientWidth || 0;
-    const containerHeight = container.clientHeight || 0;
-    const styles = window.getComputedStyle(container);
-
-    const paddingLeft = parseFloat(styles.paddingLeft || '0');
-    const paddingRight = parseFloat(styles.paddingRight || '0');
-    const paddingTop = parseFloat(styles.paddingTop || '0');
-    const paddingBottom = parseFloat(styles.paddingBottom || '0');
-
-    const innerWidth = Math.max(0, containerWidth - paddingLeft - paddingRight);
-    const innerHeight = Math.max(0, containerHeight - paddingTop - paddingBottom);
-
-    if (!innerWidth || !innerHeight) {
-        return {
-            container,
-            containerWidth,
-            containerHeight,
-            paddingLeft,
-            paddingRight,
-            paddingTop,
-            paddingBottom,
-            innerWidth,
-            innerHeight,
-            drawWidth: 0,
-            drawHeight: 0,
-            offsetX: 0,
-            offsetY: 0
-        };
-    }
-
-    const student = activeModalStudent ? students.get(activeModalStudent) : null;
-    const { width: displayWidth, height: displayHeight } = getStudentDisplaySize(student);
-
-    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
-        displayWidth,
-        displayHeight,
-        innerWidth,
-        innerHeight
-    );
-
-    return {
-        container,
-        containerWidth,
-        containerHeight,
-        paddingLeft,
-        paddingRight,
-        paddingTop,
-        paddingBottom,
-        innerWidth,
-        innerHeight,
-        drawWidth,
-        drawHeight,
-        offsetX,
-        offsetY
-    };
-}
-
 function resizeStudentModalCanvas() {
     if (!studentModalCanvas) {
         return;
     }
 
-    const measurements = measureStudentModalLayout();
-    if (!measurements) {
-        return;
-    }
-
-    if (!measurements.drawWidth || !measurements.drawHeight) {
-        studentModalCanvas.style.width = '';
-        studentModalCanvas.style.height = '';
-        if (studentModal && !studentModal.hasAttribute('hidden')) {
-            requestAnimationFrame(resizeStudentModalCanvas);
-        }
-        return;
-    }
-
-    const width = Math.max(0, Math.round(measurements.drawWidth));
-    const height = Math.max(0, Math.round(measurements.drawHeight));
-
-    studentModalCanvas.style.width = `${width}px`;
-    studentModalCanvas.style.height = `${height}px`;
-
-    alignTeacherOverlayCanvas(measurements);
-    requestAnimationFrame(() => alignTeacherOverlayCanvas());
+    studentModalCanvas.style.width = `${BASE_CANVAS_WIDTH}px`;
+    studentModalCanvas.style.height = `${BASE_CANVAS_HEIGHT}px`;
+    alignTeacherOverlayCanvas();
 }
 
-function alignTeacherOverlayCanvas(measurements) {
+function alignTeacherOverlayCanvas() {
     if (!teacherOverlayCanvas || !studentModalCanvas) {
         return;
     }
 
-    const layout = measurements || measureStudentModalLayout();
-    if (!layout) {
-        return;
-    }
-
-    if (!layout.drawWidth || !layout.drawHeight) {
-        teacherOverlayCanvas.style.width = '';
-        teacherOverlayCanvas.style.height = '';
-        teacherOverlayCanvas.style.left = '';
-        teacherOverlayCanvas.style.top = '';
-        return;
-    }
-
-    const width = Math.max(0, Math.round(layout.drawWidth));
-    const height = Math.max(0, Math.round(layout.drawHeight));
-
-    const scrollLeft = layout.container?.scrollLeft || 0;
-    const scrollTop = layout.container?.scrollTop || 0;
-
-    const placement = calculateOverlayPlacement({
-        containerWidth: layout.containerWidth,
-        containerHeight: layout.containerHeight,
-        paddingLeft: layout.paddingLeft,
-        paddingRight: layout.paddingRight,
-        paddingTop: layout.paddingTop,
-        paddingBottom: layout.paddingBottom,
-        drawWidth: layout.drawWidth,
-        drawHeight: layout.drawHeight
-    });
-
-    const left = layout.paddingLeft + layout.offsetX;
-    const top = layout.paddingTop + layout.offsetY;
-
-    teacherOverlayCanvas.style.width = `${width}px`;
-    teacherOverlayCanvas.style.height = `${height}px`;
-    teacherOverlayCanvas.style.left = `${Math.round((Number.isFinite(left) ? left : placement.left) + scrollLeft)}px`;
-    teacherOverlayCanvas.style.top = `${Math.round((Number.isFinite(top) ? top : placement.top) + scrollTop)}px`;
+    teacherOverlayCanvas.style.width = `${BASE_CANVAS_WIDTH}px`;
+    teacherOverlayCanvas.style.height = `${BASE_CANVAS_HEIGHT}px`;
+    teacherOverlayCanvas.style.left = '50%';
+    teacherOverlayCanvas.style.top = '50%';
+    teacherOverlayCanvas.style.transform = 'translate(-50%, -50%)';
 }
 
 function updateStudentModalMeta(student) {
@@ -3728,7 +3572,6 @@ function applyDrawBatch(student, batch) {
             return;
         }
         ctx.save();
-        applyStudentCanvasTransform(ctx, canvas, student);
         drawBatchToContext(ctx, batch);
         ctx.restore();
     });
@@ -3868,55 +3711,6 @@ function normaliseBatchSegment(segment) {
     return null;
 }
 
-function getStudentDisplaySize(student) {
-    if (!student) {
-        return { width: BASE_CANVAS_WIDTH, height: BASE_CANVAS_HEIGHT };
-    }
-
-    const width = Number(student.canvasWidth);
-    const height = Number(student.canvasHeight);
-    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
-        return { width, height };
-    }
-
-    const vectorWidth = Number(student.backgroundVectors?.width);
-    const vectorHeight = Number(student.backgroundVectors?.height);
-    if (Number.isFinite(vectorWidth) && Number.isFinite(vectorHeight) && vectorWidth > 0 && vectorHeight > 0) {
-        return { width: vectorWidth, height: vectorHeight };
-    }
-
-    const imageWidth = Number(student.backgroundImageElement?.naturalWidth || student.backgroundImageElement?.width);
-    const imageHeight = Number(student.backgroundImageElement?.naturalHeight || student.backgroundImageElement?.height);
-    if (Number.isFinite(imageWidth) && Number.isFinite(imageHeight) && imageWidth > 0 && imageHeight > 0) {
-        return { width: imageWidth, height: imageHeight };
-    }
-
-    return { width: BASE_CANVAS_WIDTH, height: BASE_CANVAS_HEIGHT };
-}
-
-function applyStudentCanvasTransform(ctx, canvas, student) {
-    if (!ctx || !canvas) {
-        return;
-    }
-
-    const { width, height } = getStudentDisplaySize(student);
-    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
-        width,
-        height,
-        canvas.width,
-        canvas.height
-    );
-
-    if (!drawWidth || !drawHeight) {
-        return;
-    }
-
-    const scaleX = drawWidth / BASE_CANVAS_WIDTH;
-    const scaleY = drawHeight / BASE_CANVAS_HEIGHT;
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(scaleX, scaleY);
-}
-
 function drawStudentCanvas(student) {
     const targets = getStudentTargets(student);
     if (targets.length === 0) {
@@ -3927,7 +3721,6 @@ function drawStudentCanvas(student) {
         targets.forEach(({ ctx, canvas }) => {
             resetCanvas(ctx, canvas);
             ctx.save();
-            applyStudentCanvasTransform(ctx, canvas, student);
             drawStudentBackground(ctx, student.backgroundImageElement, student.backgroundVectors);
             renderStudentPaths(ctx, student.paths);
             if (Array.isArray(student.pendingSegments) && student.pendingSegments.length > 0) {
@@ -3966,7 +3759,7 @@ function drawStudentCanvas(student) {
             student.backgroundImageElement.onerror = null;
             render();
             if (student.username === activeModalStudent) {
-                requestAnimationFrame(alignTeacherOverlayCanvas);
+                alignTeacherOverlayCanvas();
             }
         };
         student.backgroundImageElement.onerror = () => {
@@ -3975,13 +3768,13 @@ function drawStudentCanvas(student) {
             student.backgroundImageElement = null;
             render();
             if (student.username === activeModalStudent) {
-                requestAnimationFrame(alignTeacherOverlayCanvas);
+                alignTeacherOverlayCanvas();
             }
         };
     }
 
     if (student.username === activeModalStudent) {
-        requestAnimationFrame(alignTeacherOverlayCanvas);
+        alignTeacherOverlayCanvas();
     }
 }
 
@@ -3998,29 +3791,10 @@ function copyStudentCardToPreview(student) {
         return;
     }
 
-    const sourceWidth = Number(sourceCanvas.width);
-    const sourceHeight = Number(sourceCanvas.height);
-
-    if (!Number.isFinite(sourceWidth) || !Number.isFinite(sourceHeight) || sourceWidth <= 0 || sourceHeight <= 0) {
-        return;
-    }
-
     resetCanvas(previewCtx, previewCanvas);
-
-    const { drawWidth, drawHeight, offsetX, offsetY } = calculateContainDimensions(
-        sourceWidth,
-        sourceHeight,
-        previewCanvas.width,
-        previewCanvas.height
-    );
-
-    if (!drawWidth || !drawHeight) {
-        return;
-    }
 
     previewCtx.save();
     try {
-        previewCtx.translate(offsetX, offsetY);
         previewCtx.drawImage(
             sourceCanvas,
             0,
@@ -4029,8 +3803,8 @@ function copyStudentCardToPreview(student) {
             sourceCanvas.height,
             0,
             0,
-            drawWidth,
-            drawHeight
+            previewCanvas.width,
+            previewCanvas.height
         );
     } catch (error) {
         console.error('Failed to copy student preview canvas', error);

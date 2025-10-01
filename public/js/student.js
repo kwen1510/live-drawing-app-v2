@@ -16,10 +16,6 @@ const stylusButton = document.getElementById('stylusModeButton');
 const colorButtons = document.querySelectorAll('[data-color]');
 const toolButtons = document.querySelectorAll('[data-tool]');
 const canvas = document.getElementById('drawingCanvas');
-const studentShellWrap = document.querySelector('.student-shell__wrap');
-const studentTopbar = document.querySelector('.student-topbar');
-const studentCanvasContainer = document.querySelector('.student-canvas');
-const studentCanvasSurface = document.querySelector('.student-canvas__surface');
 const waitingOverlay = document.getElementById('waitingOverlay');
 const waitingLabel = document.getElementById('waitingLabel');
 const waitingSubtitle = document.getElementById('waitingSubtitle');
@@ -142,14 +138,8 @@ const BRUSH_POPOVER_OFFSET = 12;
 const BRUSH_POPOVER_MARGIN = 16;
 
 const canvasSize = {
-    width: 1,
-    height: 1
-};
-
-const BASE_CANVAS_RATIO = BASE_CANVAS_WIDTH / BASE_CANVAS_HEIGHT;
-
-const canvasDisplayState = {
-    letterboxed: false
+    width: BASE_CANVAS_WIDTH,
+    height: BASE_CANVAS_HEIGHT
 };
 
 let isQuestionActive = false;
@@ -172,19 +162,10 @@ if (sessionCodeDisplay) {
 }
 
 setWaitingState(true);
-setupViewportSizing();
 initialiseCanvas();
 setupToolbox();
 setupClearButton();
 setupRealtime();
-
-function hasActiveBackgroundContent() {
-    return Boolean(
-        (typeof backgroundImageData === 'string' && backgroundImageData.length > 0)
-            || backgroundImageElement
-            || backgroundVectorDefinition
-    );
-}
 
 function setWaitingState(waiting, options = {}) {
     const { title, subtitle } = options;
@@ -218,76 +199,6 @@ function setWaitingState(waiting, options = {}) {
     }
 }
 
-function updateCanvasLetterboxing() {
-    const shouldLetterbox = hasActiveBackgroundContent();
-    canvasDisplayState.letterboxed = shouldLetterbox;
-
-    if (studentCanvasSurface) {
-        studentCanvasSurface.classList.toggle('student-canvas__surface--letterboxed', shouldLetterbox);
-    }
-
-    requestAnimationFrame(resizeCanvas);
-}
-
-function setupViewportSizing() {
-    if (!studentShellWrap || !studentTopbar || !studentCanvasContainer) {
-        return;
-    }
-
-    let pendingRaf = null;
-
-    const applyViewportSizing = () => {
-        pendingRaf = null;
-
-        const viewportHeight = window.visualViewport?.height || window.innerHeight;
-        const viewportWidth = window.visualViewport?.width || window.innerWidth;
-
-        studentShellWrap.style.setProperty('--student-viewport-height', `${viewportHeight}px`);
-        studentShellWrap.style.setProperty('--student-viewport-width', `${viewportWidth}px`);
-
-        studentShellWrap.style.height = `${viewportHeight}px`;
-        studentShellWrap.style.minHeight = `${viewportHeight}px`;
-
-        const topbarHeight = studentTopbar.offsetHeight;
-        const availableHeight = Math.max(0, viewportHeight - topbarHeight);
-
-        studentCanvasContainer.style.height = `${availableHeight}px`;
-        studentCanvasContainer.style.minHeight = `${availableHeight}px`;
-        studentCanvasContainer.style.maxHeight = `${availableHeight}px`;
-
-        if (studentCanvasSurface) {
-            studentCanvasSurface.style.height = '100%';
-            studentCanvasSurface.style.minHeight = '0px';
-            studentCanvasSurface.style.maxHeight = '100%';
-        }
-
-        requestAnimationFrame(resizeCanvas);
-    };
-
-    const queueViewportSizing = () => {
-        if (pendingRaf !== null) {
-            cancelAnimationFrame(pendingRaf);
-        }
-        pendingRaf = requestAnimationFrame(applyViewportSizing);
-    };
-
-    queueViewportSizing();
-
-    const topbarResizeObserver = new ResizeObserver(queueViewportSizing);
-    topbarResizeObserver.observe(studentTopbar);
-
-    window.addEventListener('resize', queueViewportSizing);
-
-    window.addEventListener('orientationchange', () => {
-        setTimeout(queueViewportSizing, 150);
-    });
-
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', queueViewportSizing, { passive: true });
-        window.visualViewport.addEventListener('scroll', queueViewportSizing, { passive: true });
-    }
-}
-
 function initialiseCanvas() {
     if (!canvas || !ctx) {
         return;
@@ -296,15 +207,6 @@ function initialiseCanvas() {
     canvas.style.touchAction = 'none';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
-    const resizeObserver = new ResizeObserver(() => {
-        requestAnimationFrame(resizeCanvas);
-    });
-    resizeObserver.observe(canvas);
-
-    window.addEventListener('orientationchange', () => {
-        setTimeout(resizeCanvas, 150);
-    });
 
     canvas.addEventListener('pointerdown', handlePointerDown, { passive: false });
     canvas.addEventListener('pointermove', handlePointerMove, { passive: false });
@@ -1707,47 +1609,15 @@ function resizeCanvas() {
         return;
     }
 
-    const container = studentCanvasSurface || canvas.parentElement;
-    const containerRect = container?.getBoundingClientRect?.();
-    if (!containerRect || !containerRect.width || !containerRect.height) {
-        return;
-    }
-
-    const containerWidth = Math.max(1, containerRect.width);
-    const containerHeight = Math.max(1, containerRect.height);
-
-    let displayWidth = containerWidth;
-    let displayHeight = containerHeight;
-
-    if (canvasDisplayState.letterboxed && Number.isFinite(BASE_CANVAS_RATIO) && BASE_CANVAS_RATIO > 0) {
-        const containerRatio = containerWidth / containerHeight;
-
-        if (containerRatio > BASE_CANVAS_RATIO) {
-            displayHeight = containerHeight;
-            displayWidth = displayHeight * BASE_CANVAS_RATIO;
-        } else {
-            displayWidth = containerWidth;
-            displayHeight = displayWidth / BASE_CANVAS_RATIO;
-        }
-
-        displayWidth = Math.min(displayWidth, containerWidth);
-        displayHeight = Math.min(displayHeight, containerHeight);
-    }
-
-    canvas.style.width = `${displayWidth}px`;
-    canvas.style.height = `${displayHeight}px`;
-
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) {
-        return;
-    }
-
     const dpr = Math.max(1, Math.min(MAX_DPR, window.devicePixelRatio || 1));
-    canvasSize.width = rect.width;
-    canvasSize.height = rect.height;
+    canvas.style.width = `${BASE_CANVAS_WIDTH}px`;
+    canvas.style.height = `${BASE_CANVAS_HEIGHT}px`;
 
-    canvas.width = Math.round(rect.width * dpr);
-    canvas.height = Math.round(rect.height * dpr);
+    canvasSize.width = BASE_CANVAS_WIDTH;
+    canvasSize.height = BASE_CANVAS_HEIGHT;
+
+    canvas.width = Math.round(BASE_CANVAS_WIDTH * dpr);
+    canvas.height = Math.round(BASE_CANVAS_HEIGHT * dpr);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     redrawCanvas();
@@ -1815,18 +1685,16 @@ function applyBackgroundVectors(definition) {
             backgroundVectorDefinition = null;
             redrawCanvas();
         }
-        updateCanvasLetterboxing();
         return;
     }
 
     if (vectorDefinitionsEqual(backgroundVectorDefinition, normalised)) {
-        updateCanvasLetterboxing();
+        redrawCanvas();
         return;
     }
 
     backgroundVectorDefinition = normalised;
     redrawCanvas();
-    updateCanvasLetterboxing();
 }
 
 function clearBackgroundVectors() {
@@ -1835,7 +1703,6 @@ function clearBackgroundVectors() {
         backgroundVectorDefinition = null;
         redrawCanvas();
     }
-    updateCanvasLetterboxing();
 }
 
 function drawBackgroundVectors(definition) {
@@ -2428,8 +2295,7 @@ function applyBackgroundImage(imageData) {
     backgroundImageData = imageData;
     const image = new Image();
     backgroundImageElement = image;
-
-    updateCanvasLetterboxing();
+    redrawCanvas();
 
     image.onload = () => {
         if (backgroundImageElement === image) {
@@ -2442,7 +2308,6 @@ function applyBackgroundImage(imageData) {
             backgroundImageData = null;
             backgroundImageElement = null;
             redrawCanvas();
-            updateCanvasLetterboxing();
         }
     };
 
@@ -2457,7 +2322,6 @@ function removeBackgroundImage() {
     backgroundImageData = null;
     backgroundImageElement = null;
     redrawCanvas();
-    updateCanvasLetterboxing();
 }
 
 function handleNextQuestionFromTeacher(nextQuestionNumber = null, mode = null, background = null) {
